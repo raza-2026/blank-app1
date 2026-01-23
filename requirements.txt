@@ -1,1 +1,11 @@
 streamlit
+streamlit==1.41.1
+requests==2.32.3
+pandas==2.2.3
+python-dateutil==2.9.0.post0
+
+streamlit
+requests
+pandas
+python-dateutil
+
