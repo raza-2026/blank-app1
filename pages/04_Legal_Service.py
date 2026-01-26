@@ -6,6 +6,12 @@ from osdu_app.config import load_config
 from osdu_app.auth import get_access_token
 from osdu_app.legal_service import LegalService
 
+
+from osdu_app.auth_ui import render_auth_status
+
+#render_auth_status(location="sidebar", enable_live_timer=True)
+
+
 st.set_page_config(page_title="Legal Service - OSDU", layout="wide")
 
 

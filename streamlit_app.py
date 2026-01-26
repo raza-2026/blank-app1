@@ -11,6 +11,12 @@ from osdu_app.legal_service import LegalService
 import requests
 
 
+from osdu_app.auth_ui import render_auth_status
+
+#render_auth_status(location="sidebar", enable_live_timer=True)
+
+
+
 from osdu_app.config import load_config
 from osdu_app.auth import get_access_token
 from osdu_app.file_service import FileService
@@ -128,7 +134,7 @@ def build_file_generic_metadata(
 def main():
     
     st.set_page_config(page_title="Wellbore Ingestion - OSDU", layout="wide")
-    render_menu()
+    render_menu() # ✅ adds menu + auth timer
     st.title("Wellbore Ingestion • File Service Module + Tools (Phase 1)")
 
     cfg = load_config()

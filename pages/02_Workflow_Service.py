@@ -7,10 +7,16 @@ import streamlit as st
 from osdu_app.config import load_config
 from osdu_app.auth import get_access_token
 from osdu_app.workflow_service import WorkflowService
+from menu import render_menu
+
+from osdu_app.auth_ui import render_auth_status
+
+#render_auth_status(location="sidebar", enable_live_timer=True)
 
 
 def main():
     st.set_page_config(page_title="Workflow Service (Phase 2)", layout="wide")
+    render_menu()
     st.title("Workflow Service • Module (Phase 2)")
     st.caption(
         "This module demonstrates Workflow Service discovery, workflow details, run history, run status, and run update operations."
