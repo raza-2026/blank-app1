@@ -3,14 +3,20 @@ import json
 import time
 import uuid
 
+
 import streamlit as st
+
+
+from osdu_app.legal_service import LegalService
+import requests
+
 
 from osdu_app.config import load_config
 from osdu_app.auth import get_access_token
 from osdu_app.file_service import FileService
 from osdu_app.workflow_service import WorkflowService
 from osdu_app.validators import validate_wellbore_csv
-
+from menu import render_menu
 
 # -----------------------------
 # Helpers
@@ -120,10 +126,40 @@ def build_file_generic_metadata(
 # Main App
 # -----------------------------
 def main():
+    
     st.set_page_config(page_title="Wellbore Ingestion - OSDU", layout="wide")
+    render_menu()
     st.title("Wellbore Ingestion • File Service Module + Tools (Phase 1)")
 
     cfg = load_config()
+
+    
+    # -----------------------------
+    # Sidebar: Module Navigation
+    # -----------------------------
+    with st.sidebar:
+        st.title("OSDU Demo App")
+        st.caption("Tip: Use the menu to switch modules.")
+        st.write("DEBUG autofill_legal_tag:", st.session_state.get("autofill_legal_tag"))
+
+        module = st.radio(
+            "Modules",
+            [
+                "Module 1 - File Service",
+                "Module 2 - Workflow Service",
+                "Module 3 - Main Menu / About",
+                "Module 4 - Legal Service",
+            ],
+            index=0,
+        )
+
+        
+    def render_file_service(cfg):
+        st.title("Wellbore Ingestion • File Service Module + Tools (Phase 1)")
+        # ... keep ALL your current Module 1 code here ...
+        # IMPORTANT: Remove Legal section from here (we’ll render it separately)
+
+
 
     # Defaults from secrets (optional)
     default_acl_owner = st.secrets.get("ACL_OWNER", "")
@@ -156,7 +192,30 @@ def main():
 
         acl_owners_text = st.text_input("ACL Owners (comma-separated)", value=default_acl_owner)
         acl_viewers_text = st.text_input("ACL Viewers (comma-separated)", value=default_acl_viewer)
-        legal_tags_text = st.text_input("Legal Tags (comma-separated)", value=default_legal_tag)
+        #legal_tags_text = st.text_input("Legal Tags (comma-separated)", value=default_legal_tag)
+        
+    # --- Legal Tags (comma-separated) ---
+    default_legal_tag = st.secrets.get("LEGAL_TAG", "")
+    autofill_tag = (st.session_state.get("autofill_legal_tag", "") or "").strip()
+
+    # If Module 4 provided a tag and we haven't already synced it into the input, sync it once
+    if autofill_tag and st.session_state.get("legal_tags_text", "").strip() == "":
+        st.session_state["legal_tags_text"] = autofill_tag
+
+    legal_tags_text = st.text_input(
+        "Legal Tags (comma-separated)",
+        value=st.session_state.get("legal_tags_text", default_legal_tag),
+        key="legal_tags_text",
+        help="Tip: Select a tag in Module 4 (Legal Service) and it will appear here automatically."
+    )
+
+    # User-visible indicator (no debug)
+    if (legal_tags_text or "").strip():
+        st.caption(f"✅ Using Legal Tag(s): `{legal_tags_text}`")
+    else:
+        st.warning("⚠️ Legal Tags are empty. Please select in Module 4 or enter manually.")
+
+
 
     # -----------------------------
     # Main page: smooth ingestion flow inputs (UX fix)
@@ -209,6 +268,32 @@ def main():
     def get_wf_api() -> WorkflowService:
         token = get_access_token(cfg)
         return WorkflowService(cfg, token)
+    
+    
+    def get_legal_api() -> LegalService:
+        token = get_access_token(cfg)
+        legal_base_url = st.secrets.get("LEGAL_SERVICE_BASE_URL", "").strip()
+        if not legal_base_url:
+            raise ValueError("Missing LEGAL_SERVICE_BASE_URL in secrets.toml")
+        return LegalService(
+            base_url=legal_base_url,
+            data_partition_id=cfg.data_partition_id,
+            access_token=token,
+        )
+    
+    
+    @st.cache_data(show_spinner=False)
+    def cached_list_legal_tags(_legal_base_url: str, _partition: str, _token: str) -> dict:
+        api = LegalService(_legal_base_url, _partition, _token)
+        return api.list_legal_tags()
+
+    def safe_clear_legal_cache():
+        try:
+            cached_list_legal_tags.clear()
+        except Exception:
+            pass
+
+
 
     # -----------------------------
     # MAIN INGESTION FLOW (Legacy getLocation)
@@ -316,6 +401,9 @@ def main():
     st.divider()
     st.header("File Service Tools (Phase 1)")
 
+    
+    st.divider()
+    
     with st.expander("A) File Service Info (/info)", expanded=False):
         if st.button("Get /info", key="btn_info"):
             try:
