@@ -13,7 +13,7 @@ def render_menu():
         st.session_state.pop("_auth_ui_rendered_sidebar", None)
 
         # Universal timer + refresh button (sidebar)
-        render_auth_status(location="sidebar", enable_live_timer=True)
+        render_auth_status(location="sidebar", enable_live_timer=False)
 
         st.divider()
         st.title("OSDU Demo App")
