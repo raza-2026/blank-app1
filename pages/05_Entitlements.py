@@ -1,3 +1,5 @@
+# entitlements.py
+
 import streamlit as st
 
 from menu import render_menu
@@ -29,9 +31,8 @@ def _cleanup_group(value) -> str:
 
     # If it's a list-like string, remove wrappers
     # Examples:
-    #   "['group@...']"
-    #   '["group@..."]'
-    if (s.startswith("[") and s.endswith("]")):
+    #   "['group@...']" or '["group@..."]'
+    if s.startswith("[") and s.endswith("]"):
         s = s[1:-1].strip()
 
     # Remove surrounding quotes if present
@@ -44,16 +45,45 @@ def _cleanup_group(value) -> str:
     return s
 
 
+def _ensure_session_keys():
+    """
+    Ensure session_state keys exist before they are used anywhere else.
+    This prevents AttributeError on first page load.
+    """
+    defaults = {
+        "owners_sel": [],       # selection coming from ACL picker (owners)
+        "viewers_sel": [],      # selection coming from ACL picker (viewers)
+        # These are the cleaned values we propagate to Module 1 (optional)
+        "acl_owners": "",
+        "acl_viewers": "",
+    }
+    for k, v in defaults.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
+
+
 def main():
     st.set_page_config(page_title="Entitlements • ACL Picker", layout="wide")
     render_menu()  # sidebar + navigation
-
     st.title("🔐 Entitlements • ACL Viewer & ACL Picker")
 
-    cfg = load_config()
-    token = get_access_token(cfg)
+    # ✅ Initialize session keys BEFORE calling any module that reads them
+    _ensure_session_keys()
 
-    # Render your entitlements UI
+    # --- Load config & token (with a friendly error if anything fails) ---
+    try:
+        cfg = load_config()
+    except Exception as e:
+        st.error(f"Failed to load configuration: {e}")
+        st.stop()
+
+    try:
+        token = get_access_token(cfg)
+    except Exception as e:
+        st.error(f"Failed to get access token: {e}")
+        st.stop()
+
+    # --- Render your entitlements UI (this reads/writes owners_sel/viewers_sel) ---
     render_entitlements_module(
         base_url=cfg.base_url,
         data_partition=cfg.data_partition_id,
@@ -87,7 +117,13 @@ def main():
         st.session_state["acl_viewers"] = viewer_value
 
         st.success("ACL values applied to Module 1. Redirecting...")
-        st.switch_page("streamlit_app.py")
+        # NOTE: Update the target if your main page is under `pages/` or has a different filename.
+        try:
+            st.switch_page("streamlit_app.py")
+        except Exception:
+            # If Streamlit multipage routing is used with `pages/`, you may need something like:
+            # st.switch_page("pages/01_Home.py")
+            st.info("If redirect didn't work, please use the sidebar to navigate to Module 1.")
 
 
 if __name__ == "__main__":

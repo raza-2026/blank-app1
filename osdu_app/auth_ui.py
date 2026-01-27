@@ -1,4 +1,3 @@
-
 import streamlit as st
 from .config import load_config
 from .auth import seconds_remaining, refresh_access_token, get_access_token
@@ -17,18 +16,13 @@ def render_auth_status(location="sidebar", enable_live_timer=True):
     - Countdown timer globally
     - Auto-refresh token near expiry
     - Manual refresh button
-    - JWT display (debug) + copy via st.code()
-
-    NOTE:
-    A per-run guard is used to avoid DuplicateElementKey issues.
-    The guard must be reset each rerun (best done in menu.py before calling this).
+    - (Debug section cleaned up: removed token preview + copy bar)
     """
 
     # Choose where to render
     container = st.sidebar if location == "sidebar" else st
 
-    # ✅ Guard to prevent duplicate rendering *within the same run*
-    # (menu.py should reset this each rerun)
+    # Guard to prevent duplicate rendering in same run
     guard_key = f"_auth_ui_rendered_{location}"
     if st.session_state.get(guard_key, False):
         return
@@ -36,22 +30,21 @@ def render_auth_status(location="sidebar", enable_live_timer=True):
 
     cfg = load_config()
 
-    # Refresh policy (defaults)
+    # Refresh policy
     refresh_early_seconds = int(st.secrets.get("TOKEN_REFRESH_EARLY_SECONDS", 120))
     tick_ms = int(st.secrets.get("TOKEN_TIMER_TICK_MS", 1000))
 
-    # Ensure token exists (cached token fetch in auth.py handles ~55min refresh via ttl=3300) [1](https://slb001-my.sharepoint.com/personal/msiddiqui11_slb_com/Documents/Microsoft%20Copilot%20Chat%20Files/Wellbore%20Ingestion%20-%20OSDU3.pdf)
+    # Ensure token exists
     try:
         get_access_token(cfg)
     except Exception as e:
         container.error(f"Auth error: {e}")
         return
 
-    # Live ticking countdown (optional)
+    # Live ticking countdown
     if enable_live_timer and _HAS_AUTOREFRESH:
-        # key unique per location to avoid collisions
         st_autorefresh(interval=tick_ms, key=f"osdu_token_timer_tick_{location}")
-    elif enable_live_timer and not _HAS_AUTOREFRESH:
+    elif enable_live_timer:
         container.caption(
             "ℹ️ Live countdown requires streamlit-autorefresh. Timer updates on clicks/navigation."
         )
@@ -61,11 +54,10 @@ def render_auth_status(location="sidebar", enable_live_timer=True):
     mm = rem // 60
     ss = rem % 60
 
-    # ✅ Auto-refresh near expiry (once per token)
+    # Auto-refresh near expiry
     current_token = st.session_state.get("osdu_token")
     refreshed_for_token = st.session_state.get("_auto_refreshed_for_token")
 
-    # refresh when in last N seconds window
     if current_token and rem > 0 and rem <= refresh_early_seconds and refreshed_for_token != current_token:
         try:
             st.session_state["_auto_refreshed_for_token"] = current_token
@@ -75,7 +67,7 @@ def render_auth_status(location="sidebar", enable_live_timer=True):
         except Exception as e:
             container.error(f"Auto-refresh failed: {e}")
 
-    # refresh if expired
+    # Auto-refresh if expired
     if current_token and rem == 0 and refreshed_for_token != current_token:
         try:
             st.session_state["_auto_refreshed_for_token"] = current_token
@@ -105,13 +97,6 @@ def render_auth_status(location="sidebar", enable_live_timer=True):
         except Exception as e:
             container.error(f"Refresh failed: {e}")
 
-    # JWT display + copy (debug)
-    token = st.session_state.get("osdu_token") or ""
-    with container.expander("🔎 Show JWT (debug)", expanded=False):
-        if token:
-            container.caption(f"Preview: {token[:12]}...{token[-12:]}")
-            # Streamlit code blocks show a copy icon in UI
-            container.code(token, language="text")
-            container.caption("Tip: Use the copy icon on the code block to copy the token.")
-        else:
-            container.warning("No token available.")
+    # ---- Cleaned Debug Section (NO preview, NO code block) ----
+    #with container.expander("🔎 JWT Debug (hidden)", expanded=False):
+        #container.caption("Token contents are hidden for security.")

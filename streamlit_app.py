@@ -143,15 +143,20 @@ def main():
         run_id_default = f"ignite2-{uuid.uuid4().hex[:8]}-wellbore"
         run_id = st.text_input("runId", value=run_id_default)
 
-        fallback_file_source = st.text_input("FileSource (fallback)", value="streamlit-test-app")
+        # ❌ Removed visible input
+        # fallback_file_source = st.text_input("FileSource (fallback)", value="streamlit-test-app")
+        # ✅ Hidden default instead
+        fallback_file_source = "streamlit-test-app"
 
         target_kind = st.text_input("TargetKind", value="mlc-training:ignite:wellbore:1.0.0")
 
-        encoding_format_id = st.text_input(
-            "EncodingFormatTypeID",
-            value="mlc-training:reference-data--EncodingFormatType:text%2Fcsv:",
-        )
-
+        # ❌ Removed visible input
+        # encoding_format_id = st.text_input(
+        #     "EncodingFormatTypeID",
+        #     value="mlc-training:reference-data--EncodingFormatType:text%2Fcsv:",
+        # )
+        # ✅ Hidden default instead (adjust to your registry if needed)
+        encoding_format_id = "mlc-training:reference-data--EncodingFormatType:text%2Fcsv:"
         # ---------------------------------------------------------
         # ACL / Legal Block (Option B)
         # ---------------------------------------------------------

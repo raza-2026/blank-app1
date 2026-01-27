@@ -1,11 +1,28 @@
-
 import streamlit as st
+from pathlib import Path
 from osdu_app.auth_ui import render_auth_status
+
+
+@st.cache_resource
+def _load_logo_bytes(path: str | Path) -> bytes:
+    return Path(path).read_bytes()
 
 
 def render_menu():
     """Shared navigation menu for all pages."""
     with st.sidebar:
+        # --- Branding (universal logo) ---
+        # Configure via .streamlit/secrets.toml → APP_LOGO_PATH = "assets/logo.png"
+        logo_src = st.secrets.get("APP_LOGO_PATH", "assets/logo.png")
+        try:
+            st.image(_load_logo_bytes(logo_src), use_container_width=True)
+        except Exception:
+            # Silent fallback: if logo missing, show a compact text title instead
+            st.markdown("### OSDU Wellbore Ingestor")
+
+        # Optional: tighten spacing under the logo slightly
+        st.markdown("<div style='margin-top: 0.25rem'></div>", unsafe_allow_html=True)
+
         # ✅ IMPORTANT:
         # auth_ui.py uses a guard key to prevent DuplicateElementKey errors.
         # That guard persists in session_state across reruns, so we reset it here
@@ -16,35 +33,30 @@ def render_menu():
         render_auth_status(location="sidebar", enable_live_timer=False)
 
         st.divider()
-        st.title("OSDU Demo App")
-        st.caption("Modules")
+        st.title("OSDU Wellbore Ingestor")
+        st.caption("Services")
 
         # Internal page links (relative to entrypoint file)
         st.page_link(
             "streamlit_app.py",
-            label="Module 1 — File Service",
-            icon="📁",
+            label="📁 File Service",
         )
         st.page_link(
             "pages/02_Workflow_Service.py",
-            label="Module 2 — Workflow Service",
-            icon="🧩",
+            label="🧩 Workflow Service",
         )
         st.page_link(
             "pages/03_Main_Menu.py",
-            label="Module 3 — Main Menu / About",
-            icon="🧭",
+            label="🧭 Main Menu / About",
         )
         st.page_link(
             "pages/04_Legal_Service.py",
-            label="Module 4 — Legal Service",
-            icon="⚖️",
+            label="⚖️ Legal Service",
+        )
+        st.page_link(
+            "pages/05_Entitlements.py",
+            label="🔐 Entitlements",
         )
 
-        
-        #  Module 5 — Entitlements
-        st.page_link("pages/05_Entitlements.py", label="Module 5 — Entitlements", icon="🔐")
-
-
         st.divider()
-        st.caption("Tip: Use the menu to switch modules.")
+        st.caption("Tip: Use the menu to switch services.")
