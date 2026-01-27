@@ -1,50 +1,35 @@
-
 import json
 import time
 import uuid
-
-
 import streamlit as st
-
-
-from osdu_app.legal_service import LegalService
 import requests
 
-
-from osdu_app.auth_ui import render_auth_status
-
-#render_auth_status(location="sidebar", enable_live_timer=True)
-
-
-
+from menu import render_menu
 from osdu_app.config import load_config
 from osdu_app.auth import get_access_token
+from osdu_app.auth_ui import render_auth_status
+
 from osdu_app.file_service import FileService
 from osdu_app.workflow_service import WorkflowService
+from osdu_app.legal_service import LegalService
 from osdu_app.validators import validate_wellbore_csv
-from menu import render_menu
 
-# -----------------------------
+
+# ---------------------------------------------------------
 # Helpers
-# -----------------------------
+# ---------------------------------------------------------
 def _csv_to_list(text: str) -> list[str]:
     items = [x.strip() for x in (text or "").split(",")]
     return [x for x in items if x]
 
 
 def redact_url(url: str) -> str:
-    """Redact query string for demo safety."""
     if not url:
         return url
     return url.split("?", 1)[0] + "?<redacted>"
 
 
 def extract_location_fields_legacy(loc: dict):
-    """
-    Legacy getLocation extraction.
-    Handles common tenant variations:
-      { "Location": { "SignedURL": "...", "FileSource": "..." }, "FileID": "..." }
-    """
     location_obj = loc.get("Location") or loc.get("location") or {}
     signed_url = (
         location_obj.get("SignedURL")
@@ -66,10 +51,6 @@ def extract_location_fields_legacy(loc: dict):
 
 
 def extract_location_fields_modern(upload_url_resp: dict):
-    """
-    Modern /v2/files/uploadURL extraction.
-    Tenants may return fields at root or nested.
-    """
     location_obj = upload_url_resp.get("Location") or upload_url_resp.get("location") or upload_url_resp
     signed_url = (
         location_obj.get("SignedURL")
@@ -95,27 +76,20 @@ def build_file_generic_metadata(
     acl_viewers: list[str],
     legal_tags: list[str],
 ):
-    """
-    Builds a File.Generic metadata record, using FileSource to link the uploaded object.
-    """
     record = json.loads(json.dumps(template))  # deep copy
 
-    # core name fields
     record["data"]["Name"] = file_name
     record["data"].setdefault("DatasetProperties", {}).setdefault("FileSourceInfo", {})
     record["data"]["DatasetProperties"]["FileSourceInfo"]["Name"] = file_name
     record["data"]["DatasetProperties"]["FileSourceInfo"]["FileSource"] = file_source
 
-    # format + target
     record["data"]["EncodingFormatTypeID"] = encoding_format_id
     record["data"].setdefault("ExtensionProperties", {}).setdefault("FileContentsDetails", {})
     record["data"]["ExtensionProperties"]["FileContentsDetails"]["TargetKind"] = target_kind
 
-    # description
     record["data"].setdefault("ExtensionProperties", {})
     record["data"]["ExtensionProperties"]["Description"] = description
 
-    # governance
     record.setdefault("acl", {})
     record["acl"]["owners"] = acl_owners
     record["acl"]["viewers"] = acl_viewers
@@ -128,25 +102,24 @@ def build_file_generic_metadata(
     return record
 
 
-# -----------------------------
+# ---------------------------------------------------------
 # Main App
-# -----------------------------
+# ---------------------------------------------------------
 def main():
-    
+
     st.set_page_config(page_title="Wellbore Ingestion - OSDU", layout="wide")
-    render_menu() # ✅ adds menu + auth timer
+    render_menu()  # Sidebar menu + token info
+
     st.title("Wellbore Ingestion • File Service Module + Tools (Phase 1)")
 
     cfg = load_config()
 
-    
-    # -----------------------------
+    # ---------------------------------------------------------
     # Sidebar: Module Navigation
-    # -----------------------------
+    # ---------------------------------------------------------
     with st.sidebar:
         st.title("OSDU Demo App")
         st.caption("Tip: Use the menu to switch modules.")
-        st.write("DEBUG autofill_legal_tag:", st.session_state.get("autofill_legal_tag"))
 
         module = st.radio(
             "Modules",
@@ -159,28 +132,14 @@ def main():
             index=0,
         )
 
-        
-    def render_file_service(cfg):
-        st.title("Wellbore Ingestion • File Service Module + Tools (Phase 1)")
-        # ... keep ALL your current Module 1 code here ...
-        # IMPORTANT: Remove Legal section from here (we’ll render it separately)
-
-
-
-    # Defaults from secrets (optional)
-    default_acl_owner = st.secrets.get("ACL_OWNER", "")
-    default_acl_viewer = st.secrets.get("ACL_VIEWER", "")
-    default_legal_tag = st.secrets.get("LEGAL_TAG", "")
-
-    # -----------------------------
-    # Sidebar: configuration inputs
-    # -----------------------------
+    # ---------------------------------------------------------
+    # Sidebar Inputs (Option B layout)
+    # ---------------------------------------------------------
     with st.sidebar:
         st.header("Inputs")
 
         workflow_name = st.text_input("Workflow name", value=cfg.workflow_name)
 
-        # runId - stable but unique by default
         run_id_default = f"ignite2-{uuid.uuid4().hex[:8]}-wellbore"
         run_id = st.text_input("runId", value=run_id_default)
 
@@ -193,39 +152,54 @@ def main():
             value="mlc-training:reference-data--EncodingFormatType:text%2Fcsv:",
         )
 
+        # ---------------------------------------------------------
+        # ACL / Legal Block (Option B)
+        # ---------------------------------------------------------
         st.divider()
         st.subheader("ACL / Legal (Required)")
 
-        acl_owners_text = st.text_input("ACL Owners (comma-separated)", value=default_acl_owner)
-        acl_viewers_text = st.text_input("ACL Viewers (comma-separated)", value=default_acl_viewer)
-        #legal_tags_text = st.text_input("Legal Tags (comma-separated)", value=default_legal_tag)
-        
-    # --- Legal Tags (comma-separated) ---
-    default_legal_tag = st.secrets.get("LEGAL_TAG", "")
-    autofill_tag = (st.session_state.get("autofill_legal_tag", "") or "").strip()
+        DEFAULT_ACL_OWNER = st.secrets.get("ACL_OWNER", "")
+        DEFAULT_ACL_VIEWER = st.secrets.get("ACL_VIEWER", "")
+        DEFAULT_LEGAL_TAG = st.secrets.get("LEGAL_TAG", "")
 
-    # If Module 4 provided a tag and we haven't already synced it into the input, sync it once
-    if autofill_tag and st.session_state.get("legal_tags_text", "").strip() == "":
-        st.session_state["legal_tags_text"] = autofill_tag
+        owners_override = st.session_state.get("acl_owners", DEFAULT_ACL_OWNER)
+        viewers_override = st.session_state.get("acl_viewers", DEFAULT_ACL_VIEWER)
 
-    legal_tags_text = st.text_input(
-        "Legal Tags (comma-separated)",
-        value=st.session_state.get("legal_tags_text", default_legal_tag),
-        key="legal_tags_text",
-        help="Tip: Select a tag in Module 4 (Legal Service) and it will appear here automatically."
-    )
+        autofill_tag = (st.session_state.get("autofill_legal_tag", "") or "").strip()
+        if autofill_tag and not st.session_state.get("legal_tags_sidebar"):
+            st.session_state["legal_tags_sidebar"] = autofill_tag
 
-    # User-visible indicator (no debug)
-    if (legal_tags_text or "").strip():
-        st.caption(f"✅ Using Legal Tag(s): `{legal_tags_text}`")
-    else:
-        st.warning("⚠️ Legal Tags are empty. Please select in Module 4 or enter manually.")
+        legal_tag_value = st.session_state.get("legal_tags_sidebar", DEFAULT_LEGAL_TAG)
 
+        acl_owners_text = st.text_input(
+            "ACL Owners (comma-separated)",
+            value=owners_override,
+            key="acl_owners_sidebar",
+        )
 
+        acl_viewers_text = st.text_input(
+            "ACL Viewers (comma-separated)",
+            value=viewers_override,
+            key="acl_viewers_sidebar",
+        )
 
-    # -----------------------------
-    # Main page: smooth ingestion flow inputs (UX fix)
-    # -----------------------------
+        legal_tags_text = st.text_input(
+            "Legal Tags (comma-separated)",
+            value=legal_tag_value,
+            key="legal_tags_sidebar",
+            help="Select a tag in Module 4 (Legal Service) or override manually."
+        )
+
+        if legal_tags_text.strip():
+            st.caption(f"✅ Using Legal Tag(s): `{legal_tags_text}`")
+        else:
+            st.warning("⚠️ Legal Tags are empty. Select from Module 4 or enter manually.")
+
+        st.divider()
+
+    # ---------------------------------------------------------
+    # Main Page UI
+    # ---------------------------------------------------------
     st.subheader("Upload wellbore CSV")
 
     uploaded = st.file_uploader("Upload wellbore CSV", type=["csv"], key="wellbore_csv_main")
@@ -238,9 +212,9 @@ def main():
 
     validate_headers = st.checkbox("Validate CSV headers", value=True, key="validate_main")
 
-    # -----------------------------
-    # Template JSON (built AFTER description exists ✅)
-    # -----------------------------
+    # ---------------------------------------------------------
+    # Template JSON
+    # ---------------------------------------------------------
     default_template = {
         "kind": "osdu:wks:dataset--File.Generic:1.0.0",
         "acl": {"owners": [], "viewers": []},
@@ -259,14 +233,14 @@ def main():
 
     st.subheader("Metadata template (File.Generic)")
     template_text = st.text_area(
-        "Template JSON (optional to edit)",
+        "Template JSON",
         value=json.dumps(default_template, indent=2),
         height=260,
     )
 
-    # -----------------------------
-    # Client factories
-    # -----------------------------
+    # ---------------------------------------------------------
+    # Client Factories
+    # ---------------------------------------------------------
     def get_file_api() -> FileService:
         token = get_access_token(cfg)
         return FileService(cfg, token)
@@ -274,8 +248,8 @@ def main():
     def get_wf_api() -> WorkflowService:
         token = get_access_token(cfg)
         return WorkflowService(cfg, token)
-    
-    
+
+    # LEGAL SERVICE CLIENT
     def get_legal_api() -> LegalService:
         token = get_access_token(cfg)
         legal_base_url = st.secrets.get("LEGAL_SERVICE_BASE_URL", "").strip()
@@ -286,8 +260,7 @@ def main():
             data_partition_id=cfg.data_partition_id,
             access_token=token,
         )
-    
-    
+
     @st.cache_data(show_spinner=False)
     def cached_list_legal_tags(_legal_base_url: str, _partition: str, _token: str) -> dict:
         api = LegalService(_legal_base_url, _partition, _token)
@@ -299,12 +272,10 @@ def main():
         except Exception:
             pass
 
-
-
-    # -----------------------------
-    # MAIN INGESTION FLOW (Legacy getLocation)
-    # -----------------------------
-    if st.button("Run: Upload → Create Metadata → Trigger Workflow (Legacy getLocation)", type="primary"):
+    # ---------------------------------------------------------
+    # MAIN INGESTION FLOW
+    # ---------------------------------------------------------
+    if st.button("Run: Upload → Create Metadata → Trigger Workflow", type="primary"):
         if not uploaded:
             st.error("Please upload a CSV.")
             st.stop()
@@ -319,14 +290,12 @@ def main():
                 st.stop()
             st.success(f"CSV validation OK • Rows: {rows}")
 
-        # parse template
         try:
             template = json.loads(template_text)
         except Exception as e:
             st.error(f"Invalid template JSON: {e}")
             st.stop()
 
-        # governance
         acl_owners = _csv_to_list(acl_owners_text)
         acl_viewers = _csv_to_list(acl_viewers_text)
         legal_tags = _csv_to_list(legal_tags_text)
@@ -341,26 +310,23 @@ def main():
         file_api = get_file_api()
         wf_api = get_wf_api()
 
-        st.info("1) Getting landing zone location (legacy getLocation)...")
+        st.info("1) Getting landing zone (legacy getLocation)")
         loc = file_api.get_upload_location_legacy(file_name)
         st.json(loc)
 
         signed_url, file_source_from_loc, file_id_from_loc = extract_location_fields_legacy(loc)
-        if not signed_url:
-            st.error("Could not find SAS/SignedURL in getLocation response.")
-            st.stop()
 
-        st.success("SignedURL extracted.")
-        st.write("FileID from getLocation:", file_id_from_loc)
-        st.write("FileSource from getLocation:", file_source_from_loc)
+        if not signed_url:
+            st.error("SignedURL missing in getLocation response.")
+            st.stop()
 
         final_file_source = file_source_from_loc or fallback_file_source
 
-        st.info("2) Uploading to landing zone (SignedURL PUT)...")
+        st.info("2) Uploading via SignedURL…")
         file_api.upload_to_signed_url(signed_url, file_bytes, content_type="text/csv")
-        st.success("Upload successful.")
+        st.success("Upload OK.")
 
-        st.info("3) Creating metadata record...")
+        st.info("3) Creating metadata record…")
         record = build_file_generic_metadata(
             template,
             file_name=file_name,
@@ -377,14 +343,15 @@ def main():
         st.json(meta)
 
         file_record_id = meta.get("id") or meta.get("fileId") or meta.get("ID")
+
         if not file_record_id:
-            st.error("Metadata created but file record id not found in response.")
+            st.error("Metadata created but file record ID missing.")
             st.stop()
 
         st.success(f"File Record ID: {file_record_id}")
         st.session_state["last_file_record_id"] = file_record_id
 
-        st.info("4) Triggering workflow...")
+        st.info("4) Triggering workflow…")
         payload = {
             "executionContext": {"id": file_record_id, "dataPartitionId": cfg.data_partition_id},
             "runId": run_id,
@@ -392,7 +359,7 @@ def main():
         resp = wf_api.trigger(workflow_name, payload)
         st.json(resp)
 
-        st.info("5) Polling workflow status (every 5s)...")
+        st.info("5) Polling workflow status…")
         for _ in range(60):
             status = wf_api.status(workflow_name, run_id)
             st.write("Status:", status.get("status", status))
@@ -401,15 +368,14 @@ def main():
                 break
             time.sleep(5)
 
-    # -----------------------------
-    # FILE SERVICE TOOLS (PHASE 1)
-    # -----------------------------
+    # ---------------------------------------------------------
+    # FILE SERVICE TOOLS
+    # ---------------------------------------------------------
     st.divider()
     st.header("File Service Tools (Phase 1)")
-
-    
     st.divider()
-    
+
+    # (A) /info
     with st.expander("A) File Service Info (/info)", expanded=False):
         if st.button("Get /info", key="btn_info"):
             try:
@@ -418,11 +384,13 @@ def main():
             except Exception as e:
                 st.error(str(e))
 
+    # (B) uploadURL
     with st.expander("B) uploadURL (modern) + Upload via SignedURL", expanded=False):
         expiry = st.text_input("uploadURL expiryTime (e.g. 5M, 1H, 1D)", value="1H", key="upload_expiry")
-        up_file = st.file_uploader("Pick a file to upload (any)", type=None, key="any_file_upload")
+        up_file = st.file_uploader("Pick a file", type=None, key="any_file_upload")
 
         col1, col2 = st.columns(2)
+
         with col1:
             if st.button("Generate uploadURL", key="btn_uploadurl"):
                 try:
@@ -447,7 +415,7 @@ def main():
             ):
                 try:
                     if not up_file:
-                        st.error("Please pick a file to upload.")
+                        st.error("Pick a file first.")
                     else:
                         file_api = get_file_api()
                         file_api.upload_to_signed_url(
@@ -455,15 +423,14 @@ def main():
                             up_file.getvalue(),
                             content_type=up_file.type or "application/octet-stream",
                         )
-                        st.success("Upload completed via SignedURL.")
+                        st.success("Upload complete.")
                 except Exception as e:
                     st.error(str(e))
 
-        st.caption("Tip: After uploadURL upload, use (C) to create metadata with the FileSource.")
+        st.caption("After uploadURL upload, use (C) to create metadata.")
 
+    # (C) Create metadata (modern)
     with st.expander("C) Create metadata from last FileSource (modern helper)", expanded=False):
-        st.write("This helps test: POST /files/metadata using FileSource returned by uploadURL.")
-
         file_source = st.text_input(
             "FileSource (from uploadURL)",
             value=st.session_state.get("last_upload_file_source", ""),
@@ -474,7 +441,7 @@ def main():
         if st.button("Create metadata (POST /files/metadata)", key="btn_create_meta_modern"):
             try:
                 if not file_source:
-                    st.error("FileSource is empty. Generate uploadURL first.")
+                    st.error("FileSource empty.")
                     st.stop()
 
                 try:
@@ -511,11 +478,12 @@ def main():
                     st.success(f"File Record ID: {file_record_id}")
                     st.session_state["last_file_record_id"] = file_record_id
                 else:
-                    st.warning("Metadata created, but could not find id in response.")
+                    st.warning("Metadata created, ID missing.")
             except Exception as e:
                 st.error(str(e))
 
-    with st.expander("D) Get metadata by File Record ID (GET /files/{id}/metadata)", expanded=False):
+    # (D) Get metadata
+    with st.expander("D) Get metadata by File Record ID", expanded=False):
         meta_id = st.text_input(
             "File metadata record id",
             value=st.session_state.get("last_file_record_id", ""),
@@ -529,13 +497,14 @@ def main():
             except Exception as e:
                 st.error(str(e))
 
-    with st.expander("E) Generate downloadURL (GET /files/{id}/downloadURL)", expanded=False):
+    # (E) downloadURL
+    with st.expander("E) Generate downloadURL", expanded=False):
         dl_id = st.text_input(
             "File metadata record id",
             value=st.session_state.get("last_file_record_id", ""),
             key="dl_id",
         )
-        dl_expiry = st.text_input("downloadURL expiryTime (e.g. 5M, 1H, 1D)", value="15M", key="dl_expiry")
+        dl_expiry = st.text_input("downloadURL expiryTime", value="15M", key="dl_expiry")
 
         if st.button("Get downloadURL", key="btn_dl"):
             try:
@@ -547,20 +516,21 @@ def main():
                 st.write("Signed download URL (redacted):", redact_url(signed) if signed else None)
             except Exception as e:
                 st.error(str(e))
-                st.info("If you get 403, it's typically entitlements/ACL mismatch for the token identity.")
+                st.info("403 usually means ACL/entitlements mismatch.")
 
-    with st.expander("F) Delete metadata (DELETE /files/{id}/metadata)", expanded=False):
+    # (F) Delete metadata
+    with st.expander("F) Delete metadata", expanded=False):
         del_id = st.text_input(
             "File metadata record id",
             value=st.session_state.get("last_file_record_id", ""),
             key="del_id",
         )
-        st.warning("This deletes metadata AND the associated file. Use only on test records.")
+        st.warning("Deletes metadata AND associated file. Use only for test objects.")
         if st.button("Delete metadata", key="btn_del"):
             try:
                 file_api = get_file_api()
                 file_api.delete_metadata(del_id)
-                st.success("Deleted metadata (and associated file if supported).")
+                st.success("Deleted.")
             except Exception as e:
                 st.error(str(e))
 

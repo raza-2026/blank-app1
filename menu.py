@@ -41,5 +41,10 @@ def render_menu():
             icon="⚖️",
         )
 
+        
+        #  Module 5 — Entitlements
+        st.page_link("pages/05_Entitlements.py", label="Module 5 — Entitlements", icon="🔐")
+
+
         st.divider()
         st.caption("Tip: Use the menu to switch modules.")

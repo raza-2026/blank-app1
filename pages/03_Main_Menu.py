@@ -27,6 +27,10 @@ def main():
         st.write("- List workflows\n- Workflow details\n- Run history\n- Run status + polling")
         st.page_link("pages/02_Workflow_Service.py", label="Open Module 2", icon="🧩")
 
+    st.subheader("🔐 Module 5 — Entitlements")
+    st.write("- View your entitlements groups\n- Pick ACL owners/viewers for ingestion")
+    st.page_link("pages/05_Entitlements.py", label="Open Module 5", icon="🔐")
+
     st.divider()
     st.subheader("Architecture (high-level)")
     st.markdown(
