@@ -58,5 +58,10 @@ def render_menu():
             label="🔐 Entitlements",
         )
 
+        st.page_link(
+            "pages/06_Wellbore_Search.py",
+            label="🔎 Wellbore Search",
+        )
+
         st.divider()
         st.caption("Tip: Use the menu to switch services.")
