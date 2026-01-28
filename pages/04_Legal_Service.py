@@ -52,12 +52,14 @@ def main():
 
         st.write(f"Showing **{len(names)}** legal tags")
 
+        # Hide label of the selectbox
         chosen = st.selectbox(
-            "Select a legal tag",
+            "Select a legal tag",             # label (collapsed)
             options=names,
             index=None,
             placeholder="Choose a legal tag...",
             key="legal_tag_selected",
+            label_visibility="collapsed",
         )
 
         if chosen:
@@ -71,26 +73,45 @@ def main():
     st.divider()
     st.subheader("2️⃣ Validate Legal Tag")
 
-    tag = st.text_input(
-        "Legal tag to validate",
-        value=st.session_state.get("selected_legal_tag", ""),
-        placeholder="Select from above or type here...",
-    )
+    # Use the selected tag directly (no visible input box)
+    tag = st.session_state.get("selected_legal_tag", "")
 
-    if st.button("Validate tag ✅"):
+    # Initialize session keys used for toggle-driven JSON display
+    st.session_state.setdefault("last_validated_tag", "")
+    st.session_state.setdefault("last_validated_payload", None)
+
+    # Row: Validate button + JSON toggle (off by default)
+    c_left, c_right = st.columns([1, 1])
+    with c_left:
+        do_validate = st.button("Validate tag ✅")
+    with c_right:
+        show_json = st.toggle("Show JSON {}", value=False, key="show_legal_json")
+
+    if do_validate:
         try:
-            if not tag.strip():
-                st.warning("Please provide a legal tag name.")
+            if not tag or not tag.strip():
+                st.warning("Please select a tag above before validating.")
                 st.stop()
 
             api = LegalService(base_url, cfg.data_partition_id, token)
             validated = api.get_legal_tag(tag.strip())
 
-            st.success("Legal tag validated successfully!")
-            st.json(validated)
+            # Store for later toggling without re-calling API
+            st.session_state["last_validated_tag"] = tag.strip()
+            st.session_state["last_validated_payload"] = validated
+
+            st.success(f"Legal tag `{tag}` validated successfully!")
 
         except Exception as e:
             st.error(f"Validation failed: {e}")
+
+    # Conditionally render JSON only if toggle is ON and we have a payload
+    if show_json:
+        payload = st.session_state.get("last_validated_payload", None)
+        if payload is not None:
+            st.json(payload)
+        else:
+            st.info("No JSON to show yet. Validate a tag first.")
 
     # ------------------------------ USE FOR INGESTION ------------------------------
     st.divider()
