@@ -117,7 +117,6 @@ def main():
     # ---------------------------------------------------------
     # Sidebar: Module Navigation
     # ---------------------------------------------------------
-    
 
     # ---------------------------------------------------------
     # Sidebar Inputs (Option B layout)
@@ -302,17 +301,37 @@ def main():
         file_api = get_file_api()
         wf_api = get_wf_api()
 
-        st.info("1) Getting landing zone (legacy getLocation)")
-        loc = file_api.get_upload_location_legacy(file_name)
-        st.json(loc)
+        # --- CHANGED BLOCK START: prefer modern uploadURL; fallback to legacy getLocation ---
+        st.info("1) Getting landing zone (prefer modern uploadURL; fallback to legacy)")
 
-        signed_url, file_source_from_loc, file_id_from_loc = extract_location_fields_legacy(loc)
+        signed_url = None
+        file_source_from_loc = None
+        file_id_from_loc = None
+        flow_used = None
+
+        try:
+            # Modern v2 path — returns SignedURL + FileSource
+            loc = file_api.get_upload_url(expiry_time="1H")  # adjust expiry as needed
+            st.json(loc)
+            signed_url, file_source_from_loc = extract_location_fields_modern(loc)
+            flow_used = "modern uploadURL"
+            st.success("Landing zone acquired via modern uploadURL.")
+        except Exception as e_modern:
+            st.warning(f"Modern uploadURL failed ({e_modern}). Falling back to legacy getLocation…")
+            # Legacy path — older tenants
+            loc = file_api.get_upload_location_legacy(file_name)
+            st.json(loc)
+            signed_url, file_source_from_loc, file_id_from_loc = extract_location_fields_legacy(loc)
+            flow_used = "legacy getLocation"
+            st.success("Landing zone acquired via legacy getLocation.")
 
         if not signed_url:
-            st.error("SignedURL missing in getLocation response.")
+            st.error("SignedURL missing from landing-zone response.")
             st.stop()
 
         final_file_source = file_source_from_loc or fallback_file_source
+        st.caption(f"Flow used: {flow_used} • FileSource: {final_file_source}")
+        # --- CHANGED BLOCK END ---
 
         st.info("2) Uploading via SignedURL…")
         file_api.upload_to_signed_url(signed_url, file_bytes, content_type="text/csv")

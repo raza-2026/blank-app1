@@ -38,7 +38,7 @@ def render_menu():
 
         st.page_link(
             "pages/03_Main_Menu.py",
-            label="🧭 Main Menu / About",
+            label="🧭 Home",
         )
 
         st.page_link(
