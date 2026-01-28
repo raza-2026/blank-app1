@@ -4,6 +4,9 @@ import json
 import math
 from typing import Dict, Any, List, Tuple, Optional
 
+import io
+from datetime import datetime
+
 import pandas as pd
 import requests
 import streamlit as st
@@ -32,6 +35,19 @@ def run_wellbore_search_app():
     DEFAULT_QUERY = "*"
     DEFAULT_RETURNED_FIELDS = ["*"]
     PAGE_LIMIT = 1000
+
+    # -----------------------------
+    # Resolve endpoint from secrets/config (no UI field)
+    # -----------------------------
+    cfg = load_config() if _HAS_OSDU_AUTH else None
+    ENDPOINT = (
+        st.secrets.get("SEARCH_SERVICE_BASE_URL", "").strip()
+        or st.secrets.get("BASE_URL", "").strip()
+        or (getattr(cfg, "base_url", "").strip() if cfg else "")
+    )
+    if not ENDPOINT:
+        st.error("Missing SEARCH_SERVICE_BASE_URL (or base_url) in .streamlit/secrets.toml / config.")
+        st.stop()
 
     # -----------------------------
     # Utility functions
@@ -253,56 +269,66 @@ def run_wellbore_search_app():
         return pd.DataFrame(rows)
 
     # -----------------------------
-    # UI - Sidebar
+    # UI - MAIN PAGE (Configuration moved here, endpoint removed)
     # -----------------------------
-    with st.sidebar:
-        st.header("Configuration")
+    st.divider()
+    st.subheader("Configuration")
 
-        # Optional: show live token status/auto-refresh UI from your shared component
-        if _HAS_OSDU_AUTH:
-            # Timer here is helpful; set enable_live_timer=True if you installed streamlit-autorefresh
-            render_auth_status(location="sidebar", enable_live_timer=True)
-        else:
-            st.warning("Shared auth module (osdu_app) not found. Using manual token path is disabled.")
+    # Optional: show live token status/auto-refresh UI on the main page
+    if _HAS_OSDU_AUTH:
+        render_auth_status(location="main", enable_live_timer=True)
+    else:
+        st.warning("Shared auth module (osdu_app) not found. Using manual token path is disabled.")
 
-        # Keep endpoint/partition configurable (defaults are fine if your backend uses the same)
-        endpoint = st.text_input("OSDU Endpoint", "https://eu6.api.enterprisedata.slb.com")
-        partition = st.text_input("Data Partition", "mlc-training")
+    # Configuration inputs (no endpoint field)
+    c1, c2 = st.columns([1, 2])
+    with c1:
+        partition = st.text_input(
+            "Data Partition",
+            value=(cfg.data_partition_id if cfg and getattr(cfg, "data_partition_id", None) else "mlc-training"),
+            key="wb_search_partition_main",
+        )
+    with c2:
+        kind = st.text_input(
+            "Kind",
+            value=st.session_state.get("wb_search_kind", "mlc-training:wks:master-data--Wellbore:*"),
+            key="wb_search_kind_main",
+            placeholder="partition:namespace:entity:version (or wildcard with *)",
+        )
 
-        st.divider()
-        kind = st.text_input("Kind", "mlc-training:wks:master-data--Wellbore:*")
-        st.divider()
+    st.caption("Tip: use wildcards, e.g., `*:wks:master-data--Wellbore:*`")
 
-        run_btn = st.button("Search")
+    st.divider()
+    run_btn = st.button("Search", key="wb_search_run_main")
 
     # -----------------------------
     # Run search
     # -----------------------------
-    def do_search_all():
-        # Get token from your AUTH system (not from .env or a textbox)
+    def do_search_all(selected_partition: str, selected_kind: str):
+        # Get token from your AUTH system
         if not _HAS_OSDU_AUTH:
             st.error("osdu_app auth/config modules are not available — cannot fetch access token.")
             return
 
-        cfg = load_config()
         try:
             token = normalize_token(get_access_token(cfg))
         except Exception as e:
             st.error(f"Auth error: {e}")
             return
 
-        if not endpoint or not partition or not kind:
-            st.error("Please fill all required fields.")
+        if not selected_partition or not selected_kind:
+            st.error("Please fill all required fields (Data Partition, Kind).")
             return
 
         with st.spinner("Searching..."):
             hits, total = fetch_all_pages(
-                endpoint, partition, token, kind, DEFAULT_QUERY, DEFAULT_RETURNED_FIELDS, PAGE_LIMIT
+                ENDPOINT, selected_partition, token, selected_kind,
+                DEFAULT_QUERY, DEFAULT_RETURNED_FIELDS, PAGE_LIMIT
             )
 
             df = flatten_hits(hits)
 
-            # --- NEW: Ensure UWI shows without commas (display only formatting) ---
+            # --- Ensure UWI shows without commas (display-only formatting) ---
             if "UWI" in df.columns:
                 df["UWI"] = df["UWI"].astype(str).str.replace(",", "", regex=False)
 
@@ -329,8 +355,11 @@ def run_wellbore_search_app():
             ss.total_count = total
             ss.clicked_name = None
 
+            # Cache last selections
+            st.session_state["wb_search_kind"] = selected_kind
+
     if run_btn:
-        do_search_all()
+        do_search_all(partition.strip(), kind.strip())
 
     # -----------------------------
     # Render results
@@ -341,29 +370,7 @@ def run_wellbore_search_app():
         st.info("Enter configuration and click Search.")
         return
 
-    st.subheader("Search Results")
-    st.caption(f"Total records: {ss.total_count}")
-
-    df_valid = df.dropna(subset=["latitude", "longitude"]).copy()
-
-    if df_valid.empty:
-        st.warning("No valid coordinates found in the results to plot on the map.")
-        st.dataframe(df, height=380, use_container_width=True)
-        return
-
-    names = ["(None)"] + df_valid["Name"].fillna("").tolist()
-    selected_default = ss.clicked_name if ss.clicked_name else "(None)"
-    try:
-        selected_index = names.index(selected_default)
-    except ValueError:
-        selected_index = 0
-
-    selected_name = st.selectbox(
-        "Select Wellbore to Zoom",
-        names,
-        index=selected_index,
-    )
-
+    # Preferred column order
     preferred = [
         "Name",
         "UWI",
@@ -379,7 +386,116 @@ def run_wellbore_search_app():
     ]
     cols = [c for c in preferred if c in df.columns] + [c for c in df.columns if c not in preferred]
 
+    # -----------------------------
+    # Build Excel (or CSV fallback) buffer safely
+    # -----------------------------
+    def build_export_buffer(export_df: pd.DataFrame) -> Tuple[io.BytesIO, str, bool]:
+        """
+        Returns (buffer, mime_type, is_excel).
+        Tries openpyxl, falls back to xlsxwriter; if neither available, falls back to CSV.
+        """
+        # Ensure numeric types are export-friendly
+        for c in ["latitude", "longitude"]:
+            if c in export_df.columns:
+                export_df[c] = pd.to_numeric(export_df[c], errors="coerce")
+
+        # Try engines in order: openpyxl -> xlsxwriter
+        engine = None
+        try:
+            import openpyxl  # noqa: F401
+            engine = "openpyxl"
+        except Exception:
+            try:
+                import xlsxwriter  # noqa: F401
+                engine = "xlsxwriter"
+            except Exception:
+                engine = None
+
+        if engine:
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine=engine) as writer:
+                export_df.to_excel(writer, index=False, sheet_name="Results")
+
+                # Width tuning
+                if engine == "openpyxl":
+                    ws = writer.sheets["Results"]
+                    from openpyxl.utils import get_column_letter
+                    for idx, col_name in enumerate(export_df.columns, start=1):
+                        try:
+                            max_len = max(
+                                (export_df[col_name].astype(str).str.len().max() or 0),
+                                len(str(col_name)),
+                            )
+                        except Exception:
+                            max_len = len(str(col_name))
+                        ws.column_dimensions[get_column_letter(idx)].width = min(40, max(12, max_len + 2))
+                elif engine == "xlsxwriter":
+                    ws = writer.sheets["Results"]
+                    for idx, col_name in enumerate(export_df.columns):
+                        try:
+                            max_len = max(
+                                (export_df[col_name].astype(str).str.len().max() or 0),
+                                len(str(col_name)),
+                            )
+                        except Exception:
+                            max_len = len(str(col_name))
+                        ws.set_column(idx, idx, min(40, max(12, max_len + 2)))
+
+            buffer.seek(0)
+            return buffer, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", True
+
+        # Fallback to CSV if no engine is present
+        csv_io = io.StringIO()
+        export_df.to_csv(csv_io, index=False)
+        buffer = io.BytesIO(csv_io.getvalue().encode("utf-8"))
+        return buffer, "text/csv", False
+
+    export_df = df[cols].copy()
+    export_buffer, export_mime, is_excel = build_export_buffer(export_df)
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # ---- Header row with right-aligned Export button (toolbar feel)
+    hdr_c1, hdr_c2 = st.columns([6, 1])
+    with hdr_c1:
+        st.subheader("Search Results")
+        st.caption(f"Total records: {ss.total_count}")
+    with hdr_c2:
+        st.download_button(
+            label="📥 Excel" if is_excel else "📥 CSV",
+            data=export_buffer,
+            file_name=f"wellbore_search_results_{ts}.{'xlsx' if is_excel else 'csv'}",
+            mime=export_mime,
+            key="wb_search_export",
+        )
+
+    #if not is_excel:
+        #st.info(
+            #"XLSX export requires either `openpyxl` or `xlsxwriter`. "
+            #"Install one of them and rerun: `pip install openpyxl` or `pip install xlsxwriter`.",
+            #icon="ℹ️",
+        #)
+
+    # ---- Results table
+    df_valid = df.dropna(subset=["latitude", "longitude"]).copy()
     st.dataframe(df[cols], height=380, use_container_width=True)
+
+    if df_valid.empty:
+        st.warning("No valid coordinates found in the results to plot on the map.")
+        return
+
+    names = ["(None)"] + df_valid["Name"].fillna("").tolist()
+    selected_default = ss.clicked_name if ss.clicked_name else "(None)"
+    try:
+        selected_index = names.index(selected_default)
+    except ValueError:
+        selected_index = 0
+
+    selected_name = st.selectbox(
+        "Select Wellbore to Zoom",
+        names,
+        index=selected_index,
+    )
 
     # -----------------------------
     # Map
@@ -466,3 +582,14 @@ def run_wellbore_search_app():
         )
 
     st.pydeck_chart(deck)
+
+    # --- Return to Start ---
+    st.divider()
+    st.markdown("### Ready to ingest another file?")
+
+    # Use a native page link (works instantly, no rerun)
+    st.page_link(
+        "pages/05_Entitlements.py",    # <-- adjust if the filename differs
+        label="📄 Ingest another file"
+        
+    )
