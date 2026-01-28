@@ -12,8 +12,8 @@ def main():
     st.set_page_config(page_title="OSDU Demo • Main Menu", layout="wide")
     render_menu()
 
-    st.title("Main Menu • OSDU Demo App")
-    st.write("Choose a module to demonstrate OSDU platform services.")
+    st.title("OSDU Wellbore Ingestor")
+    st.write("Team A")
 
     col1, col2 = st.columns(2)
 

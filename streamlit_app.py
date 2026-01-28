@@ -117,20 +117,7 @@ def main():
     # ---------------------------------------------------------
     # Sidebar: Module Navigation
     # ---------------------------------------------------------
-    with st.sidebar:
-        st.title("OSDU Demo App")
-        st.caption("Tip: Use the menu to switch modules.")
-
-        module = st.radio(
-            "Modules",
-            [
-                "Module 1 - File Service",
-                "Module 2 - Workflow Service",
-                "Module 3 - Main Menu / About",
-                "Module 4 - Legal Service",
-            ],
-            index=0,
-        )
+    
 
     # ---------------------------------------------------------
     # Sidebar Inputs (Option B layout)

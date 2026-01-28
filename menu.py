@@ -36,6 +36,21 @@ def render_menu():
         st.title("OSDU Wellbore Ingestor")
         st.caption("Services")
 
+        st.page_link(
+            "pages/03_Main_Menu.py",
+            label="🧭 Main Menu / About",
+        )
+
+        st.page_link(
+            "pages/05_Entitlements.py",
+            label="🔐 Entitlements",
+        )
+
+        st.page_link(
+            "pages/04_Legal_Service.py",
+            label="⚖️ Legal Service",
+        )
+
         # Internal page links (relative to entrypoint file)
         st.page_link(
             "streamlit_app.py",
@@ -45,18 +60,9 @@ def render_menu():
             "pages/02_Workflow_Service.py",
             label="🧩 Workflow Service",
         )
-        st.page_link(
-            "pages/03_Main_Menu.py",
-            label="🧭 Main Menu / About",
-        )
-        st.page_link(
-            "pages/04_Legal_Service.py",
-            label="⚖️ Legal Service",
-        )
-        st.page_link(
-            "pages/05_Entitlements.py",
-            label="🔐 Entitlements",
-        )
+        
+
+        
 
         st.page_link(
             "pages/06_Wellbore_Search.py",
