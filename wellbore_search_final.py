@@ -23,7 +23,7 @@ except Exception as _e:
 
 
 def run_wellbore_search_app():
-    st.title("Wellbore Search Dashboard")
+    #st.title("Wellbore Search Dashboard")
 
     # ---- Session state ----
     ss = st.session_state

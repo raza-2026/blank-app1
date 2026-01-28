@@ -66,7 +66,7 @@ def render_menu():
 
         st.page_link(
             "pages/06_Wellbore_Search.py",
-            label="🔎 Wellbore Search",
+            label="🔎 Search Records",
         )
 
         st.divider()
