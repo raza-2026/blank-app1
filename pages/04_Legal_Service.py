@@ -18,7 +18,7 @@ def main():
     render_menu()
 
     cfg = load_config()
-    st.title("⚖️ Legal Service (Module 4)")
+    st.title("⚖️ Legal Service")
     st.caption("Browse, validate, and select legal tags for ingestion.")
 
     base_url = st.secrets.get("LEGAL_SERVICE_BASE_URL", "").strip()
@@ -28,13 +28,11 @@ def main():
 
     token = get_access_token(cfg)
 
-    # Top bar
-    c1, c2, c3 = st.columns([1, 1, 2])
+    # Top bar (cleaned — removed show_raw toggle)
+    c1, c2 = st.columns([1, 3])
     with c1:
         refresh = st.button("🔄 Refresh tags")
     with c2:
-        show_raw = st.toggle("Show raw JSON", value=False)
-    with c3:
         selected = st.session_state.get("autofill_legal_tag", "—")
         st.info(f"Partition: `{cfg.data_partition_id}` • Selected for ingestion: `{selected}`")
 
@@ -49,17 +47,10 @@ def main():
         resp = cached_list_legal_tags(base_url, cfg.data_partition_id, token)
         tags = resp.get("legalTags", []) or []
 
-        if show_raw:
-            st.json(resp)
+        # Show ALL tag names (no search, no raw JSON)
+        names = [(t or {}).get("name") for t in tags]
 
-        query = st.text_input("Search legal tags", placeholder="Type to filter by name...")
-        names = [
-            (t or {}).get("name")
-            for t in tags
-            if t and (not query or query.lower() in t.get("name", "").lower())
-        ]
-
-        st.write(f"Showing **{len(names)}** tags")
+        st.write(f"Showing **{len(names)}** legal tags")
 
         chosen = st.selectbox(
             "Select a legal tag",
@@ -116,10 +107,8 @@ def main():
         st.session_state["autofill_legal_tag"] = candidate
         st.success(f"Saved `{candidate}` for ingestion (Module 1).")
 
-        
         # Redirect to Module 1 (File Service)
         st.switch_page("streamlit_app.py")
-
 
 
 if __name__ == "__main__":

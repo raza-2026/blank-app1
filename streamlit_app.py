@@ -110,7 +110,7 @@ def main():
     st.set_page_config(page_title="Wellbore Ingestion - OSDU", layout="wide")
     render_menu()  # Sidebar menu + token info
 
-    st.title("Wellbore Ingestion • File Service Module + Tools (Phase 1)")
+    st.title("Wellbore Ingestion")
 
     cfg = load_config()
 
@@ -193,13 +193,21 @@ def main():
     # ---------------------------------------------------------
     st.subheader("Upload wellbore CSV")
 
-    uploaded = st.file_uploader("Upload wellbore CSV", type=["csv"], key="wellbore_csv_main")
+    
+    
+    # Description text placed directly under the big heading
+    st.caption("CSV containing wellbore records for ingestion.")
 
-    description = st.text_input(
-        "Description",
-        value="CSV containing wellbore records for ingestion.",
-        key="desc_main",
+    # File uploader WITHOUT the small label
+    uploaded = st.file_uploader(
+        label="", 
+        type=["csv"], 
+        key="wellbore_csv_main"
     )
+
+    # Remove the description input completely — no label, no text box
+    description = "CSV containing wellbore records for ingestion."
+
 
     validate_headers = st.checkbox("Validate CSV headers", value=True, key="validate_main")
 
@@ -266,7 +274,7 @@ def main():
     # ---------------------------------------------------------
     # MAIN INGESTION FLOW
     # ---------------------------------------------------------
-    if st.button("Run: Upload → Create Metadata → Trigger Workflow", type="primary"):
+    if st.button("Submit", type="primary"):
         if not uploaded:
             st.error("Please upload a CSV.")
             st.stop()

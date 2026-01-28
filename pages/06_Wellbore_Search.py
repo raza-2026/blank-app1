@@ -14,7 +14,7 @@ def main():
     # Reuse your sidebar/menu
     render_menu()
 
-    st.title("🔎 Wellbore Search Module (OSDU Search v2)")
+    st.title("Search Records")
 
     # Hand off UI and logic to the module
     run_wellbore_search_app()
