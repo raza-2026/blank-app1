@@ -8,41 +8,44 @@ from osdu_app.auth import get_access_token
 from get_acl_streamlit import render_entitlements_module
 
 
-def _cleanup_group(value) -> str:
+def _cleanup_groups(value) -> list[str]:
     """
-    Normalize ACL group selection into a clean group string.
+    Normalize ACL group selection into a clean list of group strings.
 
     Handles:
-      - list: ["group@..."] -> "group@..."
-      - list-like string: "['group@...']" -> "group@..."
-      - plain string: "group@..." -> "group@..."
-      - empty/None -> ""
+      - list: ["group@...", "group2@..."] -> ["group@...", "group2@..."]
+      - list-like string: "['group@...','group2@...']" -> ["group@...","group2@..."]
+      - plain string: "group@..." -> ["group@..."]
+      - empty/None -> []
     """
-    if value is None:
-        return ""
+    import ast
 
-    # If the picker stored a real Python list
+    if not value:
+        return []
+
+    # If already a list from multiselect
     if isinstance(value, list):
-        if not value:
-            return ""
-        value = value[0]
+        out = []
+        for item in value:
+            if item is None:
+                continue
+            s = str(item).strip().strip("'").strip('"').strip()
+            if s:
+                out.append(s)
+        return out
 
+    # If a string, try to parse list-like strings; else return as single-item list
     s = str(value).strip()
+    try:
+        if s.startswith("[") and s.endswith("]"):
+            parsed = ast.literal_eval(s)
+            if isinstance(parsed, list):
+                return [str(x).strip().strip("'").strip('"').strip() for x in parsed if str(x).strip()]
+    except Exception:
+        pass
 
-    # If it's a list-like string, remove wrappers
-    # Examples:
-    #   "['group@...']" or '["group@..."]'
-    if s.startswith("[") and s.endswith("]"):
-        s = s[1:-1].strip()
-
-    # Remove surrounding quotes if present
-    if (s.startswith("'") and s.endswith("'")) or (s.startswith('"') and s.endswith('"')):
-        s = s[1:-1].strip()
-
-    # Also handle the case: "['group@...']" after bracket strip -> "'group@...'"
     s = s.strip().strip("'").strip('"').strip()
-
-    return s
+    return [s] if s else []
 
 
 def _ensure_session_keys():
@@ -65,7 +68,7 @@ def _ensure_session_keys():
 def main():
     st.set_page_config(page_title="Entitlements • ACL Picker", layout="wide")
     render_menu()  # sidebar + navigation
-    st.title("🔐 Entitlements • ACL Viewer & ACL Picker")
+    st.title("🔐 Entitlements")
 
     # ✅ Initialize session keys BEFORE calling any module that reads them
     _ensure_session_keys()
@@ -88,33 +91,37 @@ def main():
         base_url=cfg.base_url,
         data_partition=cfg.data_partition_id,
         access_token=token,
-        title="🔐 Entitlements (ACL Picker)",
+        title="Browse and select access control list groups for ingestion",
         filter_to_data_prefix=True,
+        show_config=False,
     )
 
     st.divider()
 
     # Raw values created by your ACL picker
-    raw_owner = st.session_state.get("owners_sel", "")
-    raw_viewer = st.session_state.get("viewers_sel", "")
+    raw_owner = st.session_state.get("owners_sel", [])
+    raw_viewer = st.session_state.get("viewers_sel", [])
 
-    # ✅ Clean them so we don't pass "['group@...']" to OSDU
-    owner_value = _cleanup_group(raw_owner)
-    viewer_value = _cleanup_group(raw_viewer)
+    # ✅ Clean into lists so we support multiple selections
+    owner_values = _cleanup_groups(raw_owner)
+    viewer_values = _cleanup_groups(raw_viewer)
 
-    st.subheader("Selected ACL Values (cleaned)")
-    st.code(f"Owners: {owner_value}\nViewers: {viewer_value}")
+    st.subheader("Selected ACL Groups")
+    owners_display = "\n".join(owner_values) if owner_values else "(none)"
+    viewers_display = "\n".join(viewer_values) if viewer_values else "(none)"
+    st.code(f"Owners:\n{owners_display}\n\nViewers:\n{viewers_display}")
 
-    # Optional: small warning if empty
-    if not owner_value or not viewer_value:
-        st.warning("Select both an ACL Owner and ACL Viewer above to enable Module 1 override.")
+    # Optional: small warning if either list is empty
+    if not owner_values or not viewer_values:
+        st.warning("Select at least one Owner and one Viewer group above to enable Module 1 override.")
 
     st.divider()
 
     # Button to push selected ACLs to Module 1
-    if st.button("✔️ Use These ACL Values in Module 1", disabled=(not owner_value or not viewer_value)):
-        st.session_state["acl_owners"] = owner_value
-        st.session_state["acl_viewers"] = viewer_value
+    if st.button("✔️ Use These ACL Values in Module 1", disabled=(not owner_values or not viewer_values)):
+        # Module 1 expects comma-separated text which it parses into lists
+        st.session_state["acl_owners"] = ", ".join(owner_values)
+        st.session_state["acl_viewers"] = ", ".join(viewer_values)
 
         st.success("ACL values applied to Module 1. Redirecting...")
         # NOTE: Update the target if your main page is under `pages/` or has a different filename.

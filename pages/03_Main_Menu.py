@@ -13,9 +13,29 @@ def main():
     render_menu()
 
     st.title("Welcome Muhammad Raza!")
-    
 
-    
+    # Intro line under title
+    st.markdown("<div style='margin-bottom:8px'>IngestWell insert your wells into OSDU following these steps</div>", unsafe_allow_html=True)
+
+    # Show home page image (placed in assets/home_page.png)
+    img_path = "assets/home_page.png"
+    try:
+        st.image(img_path, use_container_width=True)
+    except Exception:
+        # silent fallback if image missing
+        st.info("Home image not found at assets/home_page.png")
+
+    # Right-aligned CTA button that switches page in the same tab
+    cols = st.columns([3, 1])
+    with cols[1]:
+        if st.button("Let's get your wells Ingested"):
+            try:
+                # Preferred: switch to the Entitlements page within Streamlit
+                st.switch_page("pages/05_Entitlements.py")
+            except Exception:
+                # Fallback: set query params and rerun
+                st.experimental_set_query_params(page=["pages/05_Entitlements.py"])
+                st.experimental_rerun()
         
 
  
