@@ -117,20 +117,18 @@ def main():
 
     st.divider()
 
-    # Button to push selected ACLs to Module 1
-    if st.button("✔️ Use These ACL Values in Module 1", disabled=(not owner_values or not viewer_values)):
+    # Button to push selected ACLs and proceed to Legal Service
+    if st.button("✔️ Use these ACL's for ingestion", disabled=(not owner_values or not viewer_values)):
         # Module 1 expects comma-separated text which it parses into lists
         st.session_state["acl_owners"] = ", ".join(owner_values)
         st.session_state["acl_viewers"] = ", ".join(viewer_values)
 
-        st.success("ACL values applied to Module 1. Redirecting...")
-        # NOTE: Update the target if your main page is under `pages/` or has a different filename.
+        st.success("ACL values saved for ingestion. Redirecting to Legal Service…")
+        # Navigate to Legal Service page to select legal tags next
         try:
-            st.switch_page("streamlit_app.py")
+            st.switch_page("pages/04_Legal_Service.py")
         except Exception:
-            # If Streamlit multipage routing is used with `pages/`, you may need something like:
-            # st.switch_page("pages/01_Home.py")
-            st.info("If redirect didn't work, please use the sidebar to navigate to Module 1.")
+            st.info("If redirect didn't work, please use the sidebar to navigate to Legal Service.")
 
 
 if __name__ == "__main__":

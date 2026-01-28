@@ -14,8 +14,16 @@ def main():
 
     st.title("Welcome Muhammad Raza!")
 
-    # Intro line under title
-    st.markdown("<div style='margin-bottom:8px'>IngestWell insert your wells into OSDU following these steps</div>", unsafe_allow_html=True)
+    # Intro line under title (larger text, with more top/bottom spacing)
+    st.markdown(
+        "<div style='margin-top:12px;margin-bottom:12px;font-size:20px;font-weight:500'>"
+        "IngestWell insert your wells into OSDU following these steps"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    # Add slight extra spacing before the home image
+    st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
     # Show home page image (placed in assets/home_page.png)
     img_path = "assets/home_page.png"
@@ -24,6 +32,9 @@ def main():
     except Exception:
         # silent fallback if image missing
         st.info("Home image not found at assets/home_page.png")
+
+    # Add spacing below the image to push subsequent content down
+    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
 
     # Right-aligned CTA button that switches page in the same tab
     cols = st.columns([3, 1])
