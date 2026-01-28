@@ -54,7 +54,7 @@ def render_menu():
         # Internal page links (relative to entrypoint file)
         st.page_link(
             "streamlit_app.py",
-            label="📁 File Service",
+            label="📁 Wellbore Ingestion",
         )
         st.page_link(
             "pages/02_Workflow_Service.py",

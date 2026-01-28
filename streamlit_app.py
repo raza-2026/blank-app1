@@ -106,7 +106,6 @@ def build_file_generic_metadata(
 # Main App
 # ---------------------------------------------------------
 def main():
-
     st.set_page_config(page_title="Wellbore Ingestion - OSDU", layout="wide")
     render_menu()  # Sidebar menu + token info
 
@@ -115,104 +114,76 @@ def main():
     cfg = load_config()
 
     # ---------------------------------------------------------
-    # Sidebar: Module Navigation
-    # ---------------------------------------------------------
-
-    # ---------------------------------------------------------
-    # Sidebar Inputs (Option B layout)
-    # ---------------------------------------------------------
-    with st.sidebar:
-        st.header("Inputs")
-
-        workflow_name = st.text_input("Workflow name", value=cfg.workflow_name)
-
-        run_id_default = f"ignite2-{uuid.uuid4().hex[:8]}-wellbore"
-        run_id = st.text_input("runId", value=run_id_default)
-
-        # ❌ Removed visible input
-        # fallback_file_source = st.text_input("FileSource (fallback)", value="streamlit-test-app")
-        # ✅ Hidden default instead
-        fallback_file_source = "streamlit-test-app"
-
-        target_kind = st.text_input("TargetKind", value="mlc-training:ignite:wellbore:1.0.0")
-
-        # ❌ Removed visible input
-        # encoding_format_id = st.text_input(
-        #     "EncodingFormatTypeID",
-        #     value="mlc-training:reference-data--EncodingFormatType:text%2Fcsv:",
-        # )
-        # ✅ Hidden default instead (adjust to your registry if needed)
-        encoding_format_id = "mlc-training:reference-data--EncodingFormatType:text%2Fcsv:"
-        # ---------------------------------------------------------
-        # ACL / Legal Block (Option B)
-        # ---------------------------------------------------------
-        st.divider()
-        st.subheader("ACL / Legal (Required)")
-
-        DEFAULT_ACL_OWNER = st.secrets.get("ACL_OWNER", "")
-        DEFAULT_ACL_VIEWER = st.secrets.get("ACL_VIEWER", "")
-        DEFAULT_LEGAL_TAG = st.secrets.get("LEGAL_TAG", "")
-
-        owners_override = st.session_state.get("acl_owners", DEFAULT_ACL_OWNER)
-        viewers_override = st.session_state.get("acl_viewers", DEFAULT_ACL_VIEWER)
-
-        autofill_tag = (st.session_state.get("autofill_legal_tag", "") or "").strip()
-        if autofill_tag and not st.session_state.get("legal_tags_sidebar"):
-            st.session_state["legal_tags_sidebar"] = autofill_tag
-
-        legal_tag_value = st.session_state.get("legal_tags_sidebar", DEFAULT_LEGAL_TAG)
-
-        acl_owners_text = st.text_input(
-            "ACL Owners (comma-separated)",
-            value=owners_override,
-            key="acl_owners_sidebar",
-        )
-
-        acl_viewers_text = st.text_input(
-            "ACL Viewers (comma-separated)",
-            value=viewers_override,
-            key="acl_viewers_sidebar",
-        )
-
-        legal_tags_text = st.text_input(
-            "Legal Tags (comma-separated)",
-            value=legal_tag_value,
-            key="legal_tags_sidebar",
-            help="Select a tag in Module 4 (Legal Service) or override manually."
-        )
-
-        if legal_tags_text.strip():
-            st.caption(f"✅ Using Legal Tag(s): `{legal_tags_text}`")
-        else:
-            st.warning("⚠️ Legal Tags are empty. Select from Module 4 or enter manually.")
-
-        st.divider()
-
-    # ---------------------------------------------------------
     # Main Page UI
     # ---------------------------------------------------------
     st.subheader("Upload wellbore CSV")
-
-    
-    
-    # Description text placed directly under the big heading
     st.caption("CSV containing wellbore records for ingestion.")
 
-    # File uploader WITHOUT the small label
     uploaded = st.file_uploader(
-        label="", 
-        type=["csv"], 
-        key="wellbore_csv_main"
+        label="",
+        type=["csv"],
+        key="wellbore_csv_main",
     )
 
-    # Remove the description input completely — no label, no text box
+    # Fixed description (no input field)
     description = "CSV containing wellbore records for ingestion."
 
-
+    # Validate checkbox
     validate_headers = st.checkbox("Validate CSV headers", value=True, key="validate_main")
 
     # ---------------------------------------------------------
-    # Template JSON
+    # Inputs — moved from sidebar to main page (below validate)
+    # ---------------------------------------------------------
+    st.divider()
+    st.subheader("Inputs")
+
+    workflow_name = st.text_input("Workflow name", value=cfg.workflow_name, key="wf_name_main")
+
+    run_id_default = f"ignite2-{uuid.uuid4().hex[:8]}-wellbore"
+    run_id = st.text_input("runId", value=run_id_default, key="run_id_main")
+
+    # Hidden defaults (no visible field)
+    fallback_file_source = "streamlit-test-app"
+    encoding_format_id = "mlc-training:reference-data--EncodingFormatType:text%2Fcsv:"
+    target_kind = st.text_input("TargetKind", value="mlc-training:ignite:wellbore:1.0.0", key="target_kind_main")
+
+    # ---------------- ACL / Legal (clean labels, no messages) ----------------
+    st.divider()
+    st.subheader("ACL / Legal (Required)")
+
+    DEFAULT_ACL_OWNER = st.secrets.get("ACL_OWNER", "")
+    DEFAULT_ACL_VIEWER = st.secrets.get("ACL_VIEWER", "")
+    DEFAULT_LEGAL_TAG = st.secrets.get("LEGAL_TAG", "")
+
+    owners_override = st.session_state.get("acl_owners", DEFAULT_ACL_OWNER)
+    viewers_override = st.session_state.get("acl_viewers", DEFAULT_ACL_VIEWER)
+
+    # Autofill from Module 4 selection
+    autofill_tag = (st.session_state.get("autofill_legal_tag", "") or "").strip()
+    if autofill_tag and not st.session_state.get("legal_tags_main"):
+        st.session_state["legal_tags_main"] = autofill_tag
+
+    legal_tag_value = st.session_state.get("legal_tags_main", DEFAULT_LEGAL_TAG)
+
+    acl_owners_text = st.text_input(
+        "ACL Owners",
+        value=owners_override,
+        key="acl_owners_main",
+    )
+    acl_viewers_text = st.text_input(
+        "ACL Viewers",
+        value=viewers_override,
+        key="acl_viewers_main",
+    )
+    legal_tags_text = st.text_input(
+        "Legal Tags",
+        value=legal_tag_value,
+        key="legal_tags_main",
+        help="Select from Module 4 (Legal Service) or override manually.",
+    )
+
+    # ---------------------------------------------------------
+    # Template JSON (with Show JSON toggle; OFF by default, no caption)
     # ---------------------------------------------------------
     default_template = {
         "kind": "osdu:wks:dataset--File.Generic:1.0.0",
@@ -231,11 +202,27 @@ def main():
     }
 
     st.subheader("Metadata template (File.Generic)")
-    template_text = st.text_area(
-        "Template JSON",
-        value=json.dumps(default_template, indent=2),
-        height=260,
-    )
+
+    # Keep a canonical copy of the template text in session state
+    if "template_text" not in st.session_state:
+        st.session_state["template_text"] = json.dumps(default_template, indent=2)
+
+    # Toggle to show/hide JSON editor (OFF by default)
+    show_template_json = st.toggle("Show Template JSON {}", value=False, key="show_template_json")
+
+    if show_template_json:
+        # When visible, show an editor and persist changes
+        template_text = st.text_area(
+            "Template JSON",
+            value=st.session_state["template_text"],
+            height=260,
+            key="template_main",
+        )
+        # Persist user edits for later Submit
+        st.session_state["template_text"] = template_text
+    else:
+        # Hidden: keep using the last value from session_state
+        template_text = st.session_state["template_text"]
 
     # ---------------------------------------------------------
     # Client Factories
@@ -274,7 +261,7 @@ def main():
     # ---------------------------------------------------------
     # MAIN INGESTION FLOW
     # ---------------------------------------------------------
-    if st.button("Submit", type="primary"):
+    if st.button("Submit", type="primary", key="submit_main"):
         if not uploaded:
             st.error("Please upload a CSV.")
             st.stop()
@@ -282,12 +269,24 @@ def main():
         file_name = uploaded.name
         file_bytes = uploaded.getvalue()
 
+        # --- Compute/persist rows_count for final/submit message ---
+        rows_count = None
         if validate_headers:
             ok, msg, rows = validate_wellbore_csv(file_bytes)
             if not ok:
                 st.error(msg)
                 st.stop()
             st.success(f"CSV validation OK • Rows: {rows}")
+            rows_count = rows
+        else:
+            # Fallback: estimate rows by counting lines minus header
+            try:
+                text = file_bytes.decode("utf-8", errors="ignore")
+                lines = [ln for ln in text.splitlines() if ln.strip()]
+                rows_count = max(len(lines) - 1, 0) if lines else 0
+            except Exception:
+                rows_count = None  # if we can’t parse, skip the count message
+        st.session_state["wb_rows_count"] = rows_count
 
         try:
             template = json.loads(template_text)
@@ -309,7 +308,7 @@ def main():
         file_api = get_file_api()
         wf_api = get_wf_api()
 
-        # --- CHANGED BLOCK START: prefer modern uploadURL; fallback to legacy getLocation ---
+        # --- Prefer modern uploadURL; fallback to legacy getLocation ---
         st.info("1) Getting landing zone (prefer modern uploadURL; fallback to legacy)")
 
         signed_url = None
@@ -319,7 +318,7 @@ def main():
 
         try:
             # Modern v2 path — returns SignedURL + FileSource
-            loc = file_api.get_upload_url(expiry_time="1H")  # adjust expiry as needed
+            loc = file_api.get_upload_url(expiry_time="1H")
             st.json(loc)
             signed_url, file_source_from_loc = extract_location_fields_modern(loc)
             flow_used = "modern uploadURL"
@@ -339,7 +338,6 @@ def main():
 
         final_file_source = file_source_from_loc or fallback_file_source
         st.caption(f"Flow used: {flow_used} • FileSource: {final_file_source}")
-        # --- CHANGED BLOCK END ---
 
         st.info("2) Uploading via SignedURL…")
         file_api.upload_to_signed_url(signed_url, file_bytes, content_type="text/csv")
@@ -370,6 +368,9 @@ def main():
         st.success(f"File Record ID: {file_record_id}")
         st.session_state["last_file_record_id"] = file_record_id
 
+        # ---------------------------------------------------------
+        # 4) Triggering workflow… + immediate green success message on submit
+        # ---------------------------------------------------------
         st.info("4) Triggering workflow…")
         payload = {
             "executionContext": {"id": file_record_id, "dataPartitionId": cfg.data_partition_id},
@@ -378,14 +379,76 @@ def main():
         resp = wf_api.trigger(workflow_name, payload)
         st.json(resp)
 
+        # ✅ Show the green message as soon as the workflow is submitted
+        resp_status = (resp.get("status") or "").lower()
+        rows_count = st.session_state.get("wb_rows_count", None)
+        if resp_status == "submitted" and rows_count is not None:
+            st.success(f"{rows_count} wellbore records were created successfully")
+
+        # ---------------------------------------------------------
+        # 5) Polling workflow status — only show on change + stop cleanly
+        # ---------------------------------------------------------
         st.info("5) Polling workflow status…")
-        for _ in range(60):
-            status = wf_api.status(workflow_name, run_id)
-            st.write("Status:", status.get("status", status))
-            if status.get("status") in ("finished", "completed", "success", "failed", "error"):
-                st.json(status)
-                break
-            time.sleep(5)
+
+        # A single line that gets updated (instead of adding new lines)
+        status_ph = st.empty()
+
+        # Clear last status at the start of each new submit (fresh run)
+        st.session_state["wf_last_status"] = None
+        st.session_state["wf_polling_stop"] = False
+
+        # Optional: user can stop early
+        stop_polling = st.button("🛑 Stop Polling", key="btn_stop_polling")
+        if stop_polling:
+            st.session_state["wf_polling_stop"] = True
+
+        # Poll for up to max_wait seconds (e.g., 5 minutes)
+        max_wait_seconds = 300
+        interval_seconds = 5
+        iterations = max_wait_seconds // interval_seconds
+
+        terminal_states = {"finished", "completed", "success", "failed", "error"}
+        success_states = {"finished", "completed", "success"}  # treat these as success
+
+        with st.spinner("Waiting for workflow to finish…"):
+            for _ in range(int(iterations)):
+                # Allow user-triggered stop
+                if st.session_state.get("wf_polling_stop"):
+                    status_ph.warning("Polling stopped by user.")
+                    break
+
+                status = wf_api.status(workflow_name, run_id)
+                current = (status.get("status") or "").lower() or str(status)
+
+                # Only update UI if status changed
+                if current != st.session_state["wf_last_status"]:
+                    st.session_state["wf_last_status"] = current
+                    status_ph.write(f"Status: {current}")
+
+                    # If terminal state, show details once and stop
+                    if current in terminal_states:
+                        if current in {"failed", "error"}:
+                            status_ph.error(f"Status: {current}")
+                        else:
+                            status_ph.success(f"Status: {current}")
+
+                            # Final green message with rows_count (if available and success)
+                            rows_count_final = st.session_state.get("wb_rows_count", None)
+                            if rows_count_final is not None and current in success_states:
+                                st.success(f"{rows_count_final} wellbore records were created successfully")
+
+                        st.json(status)
+                        # Optional: clear the placeholder so no residual "running" appears
+                        # status_ph.empty()
+
+                        # Optional: toast a completion message
+                        st.toast("Workflow polling finished.", icon="✅")
+                        break
+
+                time.sleep(interval_seconds)
+            else:
+                # If loop didn't break (timeout) show one-time notice
+                status_ph.info("Polling timed out. Check workflow status later or increase timeout.")
 
     # ---------------------------------------------------------
     # FILE SERVICE TOOLS
