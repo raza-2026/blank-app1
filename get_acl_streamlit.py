@@ -232,6 +232,7 @@ def render_entitlements_module(
     access_token: str,
     title: str = "🔐 Entitlements (ACL Picker)",
     filter_to_data_prefix: bool = True,
+    show_config: bool = True,
 ) -> None:
     """
     Render the Entitlements/ACL picker UI.
@@ -256,11 +257,12 @@ def render_entitlements_module(
     resolved_member = extract_email_like(claims)
 
     # Configuration summary (no sidebar; avoids clash with menu.py sidebar)
-    with st.expander("Configuration (read-only)", expanded=False):
-        st.write("OSDU Endpoint:", base_url)
-        st.write("Data Partition:", data_partition)
-        st.write("Resolved member (from JWT):", resolved_member or "(not found)")
-        st.caption("Token comes from the app (session_state / get_access_token).")
+    if show_config:
+        with st.expander("Configuration (read-only)", expanded=False):
+            st.write("OSDU Endpoint:", base_url)
+            st.write("Data Partition:", data_partition)
+            st.write("Resolved member (from JWT):", resolved_member or "(not found)")
+            st.caption("Token comes from the app (session_state / get_access_token).")
 
     # Probe entitlements access
     ok, reason, code, body = probe_access_cached(base_url, data_partition, sig)
@@ -304,39 +306,35 @@ def render_entitlements_module(
     ss.viewers_sel = [g for g in ss.viewers_sel if g in viewers]
 
     # ---- Main ACL picker UI ----
-    st.markdown("## Pick ACL groups for ingestion")
+    st.markdown("## Select ACL Groups")
 
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("**Owner ACL groups (used as `acl.owners`)**")
-        ss.owners_sel = st.multiselect(
-            "Select owners (multi-select)",
-            options=ss.owners,
-            default=ss.owners_sel,
-            help="Choose one or more OWNER groups to embed in your ingestion payload.",
-            key="owners_multiselect",
-        )
+    # Render Owner ACL groups first, then Viewer ACL groups beneath (stacked)
+    st.markdown(
+        "<div style='display:flex;justify-content:space-between;align-items:center'>"
+        "<div><strong>1️⃣ Owner ACL groups</strong></div>"
+        "<div title='Choose one or more OWNER groups; multiple selection is allowed' style='background:#e6f0ff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#0b63d6;'>i</div>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    ss.owners_sel = st.multiselect(
+        "",
+        options=ss.owners,
+        default=ss.owners_sel,
+        key="owners_multiselect",
+    )
 
-    with c2:
-        st.markdown("**Viewer ACL groups (used as `acl.viewers`)**")
-        ss.viewers_sel = st.multiselect(
-            "Select viewers (multi-select)",
-            options=ss.viewers,
-            default=ss.viewers_sel,
-            help="Choose one or more VIEWER groups to embed in your ingestion payload.",
-            key="viewers_multiselect",
-        )
+    st.markdown(
+        "<div style='display:flex;justify-content:space-between;align-items:center'>"
+        "<div><strong>2️⃣ Viewer ACL groups</strong></div>"
+        "<div title='Choose one or more VIEWER groups; multiple selection is allowed' style='background:#e6f0ff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:12px;color:#0b63d6;'>i</div>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    ss.viewers_sel = st.multiselect(
+        "",
+        options=ss.viewers,
+        default=ss.viewers_sel,
+        key="viewers_multiselect",
+    )
 
-    # Output for integration with Module 1 (copy/paste friendly)
-    st.markdown("## Output (copy/paste into Module 1)")
-    st.code(",".join(ss.owners_sel) if ss.owners_sel else "", language="text")
-    st.code(",".join(ss.viewers_sel) if ss.viewers_sel else "", language="text")
-
-    # Optional diagnostics
-    with st.expander("Debug details (endpoint + parsing)", expanded=False):
-        st.write("Endpoint used:", ss.used_endpoint)
-        st.write("Detected owners:", ss.owners)
-        st.write("Detected viewers:", ss.viewers)
-        st.write("Selected owners:", ss.owners_sel)
-        st.write("Selected viewers:", ss.viewers_sel)
-        st.caption("Classification uses name patterns owners/viewers and/or entry.role.")
+    # (ACL output and debug details removed per UI cleanup request)
