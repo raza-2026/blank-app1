@@ -26,7 +26,7 @@ def main():
     st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
 
     # Show home page image (placed in assets/home_page.png)
-    img_path = "assets/home_page.png"
+    img_path = "assets/Home_Page.png"
     try:
         st.image(img_path, use_container_width=True)
     except Exception:

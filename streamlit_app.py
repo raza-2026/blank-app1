@@ -107,14 +107,14 @@ def build_file_generic_metadata(
 # ---------------------------------------------------------
 def main():
     st.set_page_config(page_title="Wellbore Ingestion - OSDU", layout="wide")
-    render_menu()  # Sidebar menu + token info
+    render_menu()
 
     st.title("Wellbore Ingestion")
 
     cfg = load_config()
 
     # ---------------------------------------------------------
-    # Main Page UI
+    # Upload Section
     # ---------------------------------------------------------
     st.subheader("Upload wellbore CSV")
     st.caption("CSV containing wellbore records for ingestion.")
@@ -125,14 +125,12 @@ def main():
         key="wellbore_csv_main",
     )
 
-    # Fixed description (no input field)
     description = "CSV containing wellbore records for ingestion."
 
-    # Validate checkbox
     validate_headers = st.checkbox("Validate CSV headers", value=True, key="validate_main")
 
     # ---------------------------------------------------------
-    # Inputs — moved from sidebar to main page (below validate)
+    # Inputs
     # ---------------------------------------------------------
     st.divider()
     st.subheader("Inputs")
@@ -142,12 +140,13 @@ def main():
     run_id_default = f"ignite2-{uuid.uuid4().hex[:8]}-wellbore"
     run_id = st.text_input("runId", value=run_id_default, key="run_id_main")
 
-    # Hidden defaults (no visible field)
     fallback_file_source = "streamlit-test-app"
     encoding_format_id = "mlc-training:reference-data--EncodingFormatType:text%2Fcsv:"
     target_kind = st.text_input("TargetKind", value="mlc-training:ignite:wellbore:1.0.0", key="target_kind_main")
 
-    # ---------------- ACL / Legal (clean labels, no messages) ----------------
+    # ---------------------------------------------------------
+    # ACL / Legal
+    # ---------------------------------------------------------
     st.divider()
     st.subheader("ACL / Legal (Required)")
 
@@ -158,23 +157,14 @@ def main():
     owners_override = st.session_state.get("acl_owners", DEFAULT_ACL_OWNER)
     viewers_override = st.session_state.get("acl_viewers", DEFAULT_ACL_VIEWER)
 
-    # Autofill from Module 4 selection
     autofill_tag = (st.session_state.get("autofill_legal_tag", "") or "").strip()
     if autofill_tag and not st.session_state.get("legal_tags_main"):
         st.session_state["legal_tags_main"] = autofill_tag
 
     legal_tag_value = st.session_state.get("legal_tags_main", DEFAULT_LEGAL_TAG)
 
-    acl_owners_text = st.text_input(
-        "ACL Owners",
-        value=owners_override,
-        key="acl_owners_main",
-    )
-    acl_viewers_text = st.text_input(
-        "ACL Viewers",
-        value=viewers_override,
-        key="acl_viewers_main",
-    )
+    acl_owners_text = st.text_input("ACL Owners", value=owners_override, key="acl_owners_main")
+    acl_viewers_text = st.text_input("ACL Viewers", value=viewers_override, key="acl_viewers_main")
     legal_tags_text = st.text_input(
         "Legal Tags",
         value=legal_tag_value,
@@ -183,7 +173,7 @@ def main():
     )
 
     # ---------------------------------------------------------
-    # Template JSON (with Show JSON toggle; OFF by default, no caption)
+    # Template JSON
     # ---------------------------------------------------------
     default_template = {
         "kind": "osdu:wks:dataset--File.Generic:1.0.0",
@@ -203,29 +193,24 @@ def main():
 
     st.subheader("Metadata template (File.Generic)")
 
-    # Keep a canonical copy of the template text in session state
     if "template_text" not in st.session_state:
         st.session_state["template_text"] = json.dumps(default_template, indent=2)
 
-    # Toggle to show/hide JSON editor (OFF by default)
     show_template_json = st.toggle("Show Template JSON {}", value=False, key="show_template_json")
 
     if show_template_json:
-        # When visible, show an editor and persist changes
         template_text = st.text_area(
             "Template JSON",
             value=st.session_state["template_text"],
             height=260,
             key="template_main",
         )
-        # Persist user edits for later Submit
         st.session_state["template_text"] = template_text
     else:
-        # Hidden: keep using the last value from session_state
         template_text = st.session_state["template_text"]
 
     # ---------------------------------------------------------
-    # Client Factories
+    # API clients
     # ---------------------------------------------------------
     def get_file_api() -> FileService:
         token = get_access_token(cfg)
@@ -235,31 +220,8 @@ def main():
         token = get_access_token(cfg)
         return WorkflowService(cfg, token)
 
-    # LEGAL SERVICE CLIENT
-    def get_legal_api() -> LegalService:
-        token = get_access_token(cfg)
-        legal_base_url = st.secrets.get("LEGAL_SERVICE_BASE_URL", "").strip()
-        if not legal_base_url:
-            raise ValueError("Missing LEGAL_SERVICE_BASE_URL in secrets.toml")
-        return LegalService(
-            base_url=legal_base_url,
-            data_partition_id=cfg.data_partition_id,
-            access_token=token,
-        )
-
-    @st.cache_data(show_spinner=False)
-    def cached_list_legal_tags(_legal_base_url: str, _partition: str, _token: str) -> dict:
-        api = LegalService(_legal_base_url, _partition, _token)
-        return api.list_legal_tags()
-
-    def safe_clear_legal_cache():
-        try:
-            cached_list_legal_tags.clear()
-        except Exception:
-            pass
-
     # ---------------------------------------------------------
-    # MAIN INGESTION FLOW
+    # Main Submit Button
     # ---------------------------------------------------------
     if st.button("Submit", type="primary", key="submit_main"):
         if not uploaded:
@@ -269,7 +231,7 @@ def main():
         file_name = uploaded.name
         file_bytes = uploaded.getvalue()
 
-        # --- Compute/persist rows_count for final/submit message ---
+        # CSV validation or fallback row counting
         rows_count = None
         if validate_headers:
             ok, msg, rows = validate_wellbore_csv(file_bytes)
@@ -279,21 +241,22 @@ def main():
             st.success(f"CSV validation OK • Rows: {rows}")
             rows_count = rows
         else:
-            # Fallback: estimate rows by counting lines minus header
             try:
                 text = file_bytes.decode("utf-8", errors="ignore")
                 lines = [ln for ln in text.splitlines() if ln.strip()]
                 rows_count = max(len(lines) - 1, 0) if lines else 0
             except Exception:
-                rows_count = None  # if we can’t parse, skip the count message
+                rows_count = None
         st.session_state["wb_rows_count"] = rows_count
 
+        # Parse template JSON
         try:
             template = json.loads(template_text)
         except Exception as e:
             st.error(f"Invalid template JSON: {e}")
             st.stop()
 
+        # ACL / Legal inputs
         acl_owners = _csv_to_list(acl_owners_text)
         acl_viewers = _csv_to_list(acl_viewers_text)
         legal_tags = _csv_to_list(legal_tags_text)
@@ -308,7 +271,9 @@ def main():
         file_api = get_file_api()
         wf_api = get_wf_api()
 
-        # --- Prefer modern uploadURL; fallback to legacy getLocation ---
+        # ---------------------------------------------------------
+        # 1) Landing Zone
+        # ---------------------------------------------------------
         st.info("1) Getting landing zone (prefer modern uploadURL; fallback to legacy)")
 
         signed_url = None
@@ -317,7 +282,6 @@ def main():
         flow_used = None
 
         try:
-            # Modern v2 path — returns SignedURL + FileSource
             loc = file_api.get_upload_url(expiry_time="1H")
             st.json(loc)
             signed_url, file_source_from_loc = extract_location_fields_modern(loc)
@@ -325,7 +289,6 @@ def main():
             st.success("Landing zone acquired via modern uploadURL.")
         except Exception as e_modern:
             st.warning(f"Modern uploadURL failed ({e_modern}). Falling back to legacy getLocation…")
-            # Legacy path — older tenants
             loc = file_api.get_upload_location_legacy(file_name)
             st.json(loc)
             signed_url, file_source_from_loc, file_id_from_loc = extract_location_fields_legacy(loc)
@@ -339,10 +302,16 @@ def main():
         final_file_source = file_source_from_loc or fallback_file_source
         st.caption(f"Flow used: {flow_used} • FileSource: {final_file_source}")
 
+        # ---------------------------------------------------------
+        # 2) Upload
+        # ---------------------------------------------------------
         st.info("2) Uploading via SignedURL…")
         file_api.upload_to_signed_url(signed_url, file_bytes, content_type="text/csv")
         st.success("Upload OK.")
 
+        # ---------------------------------------------------------
+        # 3) Metadata
+        # ---------------------------------------------------------
         st.info("3) Creating metadata record…")
         record = build_file_generic_metadata(
             template,
@@ -360,7 +329,6 @@ def main():
         st.json(meta)
 
         file_record_id = meta.get("id") or meta.get("fileId") or meta.get("ID")
-
         if not file_record_id:
             st.error("Metadata created but file record ID missing.")
             st.stop()
@@ -369,9 +337,10 @@ def main():
         st.session_state["last_file_record_id"] = file_record_id
 
         # ---------------------------------------------------------
-        # 4) Triggering workflow… + immediate green success message on submit
+        # 4) Triggering Workflow (EARLY SUCCESS REMOVED HERE)
         # ---------------------------------------------------------
         st.info("4) Triggering workflow…")
+
         payload = {
             "executionContext": {"id": file_record_id, "dataPartitionId": cfg.data_partition_id},
             "runId": run_id,
@@ -379,40 +348,34 @@ def main():
         resp = wf_api.trigger(workflow_name, payload)
         st.json(resp)
 
-        # ✅ Show the green message as soon as the workflow is submitted
-        resp_status = (resp.get("status") or "").lower()
-        rows_count = st.session_state.get("wb_rows_count", None)
-        if resp_status == "submitted" and rows_count is not None:
-            st.success(f"{rows_count} wellbore records were created successfully")
+        # *** Removed duplicate early success message ***
+        # resp_status = (resp.get("status") or "").lower()
+        # rows_count = st.session_state.get("wb_rows_count", None)
+        # if resp_status == "submitted" and rows_count is not None:
+        #     st.success(f"{rows_count} wellbore records were created successfully")
 
         # ---------------------------------------------------------
-        # 5) Polling workflow status — only show on change + stop cleanly
+        # 5) Polling Workflow (final success is correct)
         # ---------------------------------------------------------
         st.info("5) Polling workflow status…")
 
-        # A single line that gets updated (instead of adding new lines)
         status_ph = st.empty()
-
-        # Clear last status at the start of each new submit (fresh run)
         st.session_state["wf_last_status"] = None
         st.session_state["wf_polling_stop"] = False
 
-        # Optional: user can stop early
         stop_polling = st.button("🛑 Stop Polling", key="btn_stop_polling")
         if stop_polling:
             st.session_state["wf_polling_stop"] = True
 
-        # Poll for up to max_wait seconds (e.g., 5 minutes)
         max_wait_seconds = 300
         interval_seconds = 5
         iterations = max_wait_seconds // interval_seconds
 
         terminal_states = {"finished", "completed", "success", "failed", "error"}
-        success_states = {"finished", "completed", "success"}  # treat these as success
+        success_states = {"finished", "completed", "success"}
 
         with st.spinner("Waiting for workflow to finish…"):
             for _ in range(int(iterations)):
-                # Allow user-triggered stop
                 if st.session_state.get("wf_polling_stop"):
                     status_ph.warning("Polling stopped by user.")
                     break
@@ -420,201 +383,27 @@ def main():
                 status = wf_api.status(workflow_name, run_id)
                 current = (status.get("status") or "").lower() or str(status)
 
-                # Only update UI if status changed
                 if current != st.session_state["wf_last_status"]:
                     st.session_state["wf_last_status"] = current
                     status_ph.write(f"Status: {current}")
 
-                    # If terminal state, show details once and stop
                     if current in terminal_states:
                         if current in {"failed", "error"}:
                             status_ph.error(f"Status: {current}")
                         else:
                             status_ph.success(f"Status: {current}")
 
-                            # Final green message with rows_count (if available and success)
                             rows_count_final = st.session_state.get("wb_rows_count", None)
                             if rows_count_final is not None and current in success_states:
                                 st.success(f"{rows_count_final} wellbore records were created successfully")
 
                         st.json(status)
-                        # Optional: clear the placeholder so no residual "running" appears
-                        # status_ph.empty()
-
-                        # Optional: toast a completion message
                         st.toast("Workflow polling finished.", icon="✅")
                         break
 
                 time.sleep(interval_seconds)
             else:
-                # If loop didn't break (timeout) show one-time notice
                 status_ph.info("Polling timed out. Check workflow status later or increase timeout.")
-
-    # ---------------------------------------------------------
-    # FILE SERVICE TOOLS
-    # ---------------------------------------------------------
-    st.divider()
-    st.header("File Service Tools (Phase 1)")
-    st.divider()
-
-    # (A) /info
-    with st.expander("A) File Service Info (/info)", expanded=False):
-        if st.button("Get /info", key="btn_info"):
-            try:
-                file_api = get_file_api()
-                st.json(file_api.info())
-            except Exception as e:
-                st.error(str(e))
-
-    # (B) uploadURL
-    with st.expander("B) uploadURL (modern) + Upload via SignedURL", expanded=False):
-        expiry = st.text_input("uploadURL expiryTime (e.g. 5M, 1H, 1D)", value="1H", key="upload_expiry")
-        up_file = st.file_uploader("Pick a file", type=None, key="any_file_upload")
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            if st.button("Generate uploadURL", key="btn_uploadurl"):
-                try:
-                    file_api = get_file_api()
-                    loc = file_api.get_upload_url(expiry_time=expiry)
-                    st.json(loc)
-
-                    signed, file_source = extract_location_fields_modern(loc)
-                    st.write("SignedURL (redacted):", redact_url(signed) if signed else None)
-                    st.write("FileSource:", file_source)
-
-                    st.session_state["last_upload_signed_url"] = signed
-                    st.session_state["last_upload_file_source"] = file_source
-                except Exception as e:
-                    st.error(str(e))
-
-        with col2:
-            if st.button(
-                "Upload to last SignedURL",
-                disabled=("last_upload_signed_url" not in st.session_state),
-                key="btn_put_signed",
-            ):
-                try:
-                    if not up_file:
-                        st.error("Pick a file first.")
-                    else:
-                        file_api = get_file_api()
-                        file_api.upload_to_signed_url(
-                            st.session_state["last_upload_signed_url"],
-                            up_file.getvalue(),
-                            content_type=up_file.type or "application/octet-stream",
-                        )
-                        st.success("Upload complete.")
-                except Exception as e:
-                    st.error(str(e))
-
-        st.caption("After uploadURL upload, use (C) to create metadata.")
-
-    # (C) Create metadata (modern)
-    with st.expander("C) Create metadata from last FileSource (modern helper)", expanded=False):
-        file_source = st.text_input(
-            "FileSource (from uploadURL)",
-            value=st.session_state.get("last_upload_file_source", ""),
-            key="modern_filesource",
-        )
-        file_name_for_meta = st.text_input("File name for metadata", value="uploaded-file", key="modern_filename")
-
-        if st.button("Create metadata (POST /files/metadata)", key="btn_create_meta_modern"):
-            try:
-                if not file_source:
-                    st.error("FileSource empty.")
-                    st.stop()
-
-                try:
-                    template = json.loads(template_text)
-                except Exception as e:
-                    st.error(f"Invalid template JSON: {e}")
-                    st.stop()
-
-                acl_owners = _csv_to_list(acl_owners_text)
-                acl_viewers = _csv_to_list(acl_viewers_text)
-                legal_tags = _csv_to_list(legal_tags_text)
-
-                if not acl_owners or not acl_viewers:
-                    st.error("ACL Owners/Viewers cannot be empty.")
-                    st.stop()
-
-                file_api = get_file_api()
-                record = build_file_generic_metadata(
-                    template,
-                    file_name=file_name_for_meta,
-                    file_source=file_source,
-                    target_kind=target_kind,
-                    encoding_format_id=encoding_format_id,
-                    description=description,
-                    acl_owners=acl_owners,
-                    acl_viewers=acl_viewers,
-                    legal_tags=legal_tags,
-                )
-                meta = file_api.create_metadata(record)
-                st.json(meta)
-
-                file_record_id = meta.get("id") or meta.get("fileId") or meta.get("ID")
-                if file_record_id:
-                    st.success(f"File Record ID: {file_record_id}")
-                    st.session_state["last_file_record_id"] = file_record_id
-                else:
-                    st.warning("Metadata created, ID missing.")
-            except Exception as e:
-                st.error(str(e))
-
-    # (D) Get metadata
-    with st.expander("D) Get metadata by File Record ID", expanded=False):
-        meta_id = st.text_input(
-            "File metadata record id",
-            value=st.session_state.get("last_file_record_id", ""),
-            key="meta_get_id",
-        )
-        if st.button("Get metadata", key="btn_get_meta"):
-            try:
-                file_api = get_file_api()
-                resp = file_api.get_metadata(meta_id)
-                st.json(resp)
-            except Exception as e:
-                st.error(str(e))
-
-    # (E) downloadURL
-    with st.expander("E) Generate downloadURL", expanded=False):
-        dl_id = st.text_input(
-            "File metadata record id",
-            value=st.session_state.get("last_file_record_id", ""),
-            key="dl_id",
-        )
-        dl_expiry = st.text_input("downloadURL expiryTime", value="15M", key="dl_expiry")
-
-        if st.button("Get downloadURL", key="btn_dl"):
-            try:
-                file_api = get_file_api()
-                resp = file_api.get_download_url(dl_id, expiry_time=dl_expiry)
-                st.json(resp)
-
-                signed = resp.get("SignedUrl") or resp.get("SignedURL") or resp.get("url")
-                st.write("Signed download URL (redacted):", redact_url(signed) if signed else None)
-            except Exception as e:
-                st.error(str(e))
-                st.info("403 usually means ACL/entitlements mismatch.")
-
-    # (F) Delete metadata
-    with st.expander("F) Delete metadata", expanded=False):
-        del_id = st.text_input(
-            "File metadata record id",
-            value=st.session_state.get("last_file_record_id", ""),
-            key="del_id",
-        )
-        st.warning("Deletes metadata AND associated file. Use only for test objects.")
-        if st.button("Delete metadata", key="btn_del"):
-            try:
-                file_api = get_file_api()
-                file_api.delete_metadata(del_id)
-                st.success("Deleted.")
-            except Exception as e:
-                st.error(str(e))
 
 
 if __name__ == "__main__":
